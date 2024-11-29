@@ -8,7 +8,16 @@ dotenv.config();
 // Configura la aplicación Express
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://reviere-nube.vercel.app', // Tu URL de Vercel
+    '*' // Temporalmente para pruebas
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
+}));
+
 app.use(express.static('dist', { setHeaders: (res, path) => {
   if (path.endsWith('.js')) {
     res.setHeader('Content-Type', 'application/javascript');
