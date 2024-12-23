@@ -1017,7 +1017,4 @@ app.delete("/cupones/:id", async (req, res) => {
 });
 
 // Inicia el servidor
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor en funcionamiento en http://localhost:${PORT}`);
-});
+export default app;
