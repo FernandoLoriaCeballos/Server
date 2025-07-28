@@ -47,10 +47,13 @@ const usuarioSchema = new mongoose.Schema({
 // Esquema y modelo de Empresa
 const empresaSchema = new mongoose.Schema({
   id_empresa: Number,
-  nombre: String,
+  nombre_empresa: String,  // nombre cambiado a nombre_empresa si así lo usas en el frontend
   email: String,
   password: String,
-  fecha_reg: { type: Date, default: Date.now }
+  descripcion: String,
+  telefono: String,
+  logo: String,
+  fecha_creacion: { type: Date, default: Date.now }
 });
 const Empresa = mongoose.model("Empresa", empresaSchema, "empresas");
 
