@@ -367,6 +367,40 @@ app.post("/registro", async (req, res) => {
       { new: true, upsert: true }
     );
 
+    // Registro de empresa con logo por enlace
+app.post("/registro/empresa", async (req, res) => {
+  try {
+    const { nombre_empresa, email, password, descripcion, telefono, logo_url } = req.body;
+
+    if (!nombre_empresa || !email || !password || !logo_url) {
+      return res.status(400).json({ message: "Faltan campos obligatorios" });
+    }
+
+    const contadorEmpresa = await db.collection("contador_empresa").findOneAndUpdate(
+      {},
+      { $inc: { secuencia: 1 } },
+      { returnDocument: "after", upsert: true }
+    );
+
+    const nuevaEmpresa = {
+      id_empresa: contadorEmpresa.value.secuencia,
+      nombre_empresa,
+      email,
+      password,
+      descripcion,
+      telefono,
+      logo: logo_url,
+      fecha_creacion: new Date()
+    };
+
+    await db.collection("empresas").insertOne(nuevaEmpresa);
+    res.status(201).json({ message: "Empresa registrada exitosamente", id_empresa: nuevaEmpresa.id_empresa });
+  } catch (error) {
+    console.error("Error al registrar empresa:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
     // Crea un nuevo usuario con el valor del contador como id_usuario
     const nuevoUsuario = new Usuario({ id_usuario: contador.sequence_value, nombre, email, password });
     await nuevoUsuario.save();
