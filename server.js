@@ -466,11 +466,16 @@ app.post("/login/empresa", async (req, res) => {
 // Ruta de inicio de sesión para Empleado
 app.post("/login/empleado", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, id_empresa } = req.body;
+
     const empleado = await Empleado.findOne({ email });
 
     if (!empleado || empleado.password !== password) {
       return res.status(401).json({ message: "Credenciales inválidas" });
+    }
+
+    if (id_empresa && empleado.empresa_id !== parseInt(id_empresa)) {
+      return res.status(403).json({ message: "Este empleado no pertenece a la empresa logueada." });
     }
 
     const empresa = await Empresa.findOne({ id_empresa: empleado.empresa_id });
@@ -483,7 +488,7 @@ app.post("/login/empleado", async (req, res) => {
       id_empleado: empleado.id_empleado,
       nombre: empleado.nombre,
       id_empresa: empresa.id_empresa,
-      message: `¡Bienvenido ${empleado.nombre} de ${empresa.nombre}!`
+      message: `¡Bienvenido ${empleado.nombre} de ${empresa.nombre_empresa || empresa.nombre}!`
     });
   } catch (error) {
     console.error("Error:", error);
