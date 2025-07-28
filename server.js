@@ -41,7 +41,8 @@ const usuarioSchema = new mongoose.Schema({
   nombre: String,
   email: String,
   password: String,
-  fecha_reg: { type: Date, default: Date.now },
+  rol: { type: String, enum: ["admin", "usuario"], default: "usuario" }, // 👈 nuevo campo
+  fecha_reg: { type: Date, default: Date.now }
 });
 
 // Esquema y modelo de Empresa
@@ -371,15 +372,20 @@ const Contador = mongoose.model("Contador", contadorSchema, "contadores");
 app.post("/registro", async (req, res) => {
   const { nombre, email, password } = req.body;
   try {
-    // Obtiene el valor actual del contador y lo incrementa en uno
     const contador = await Contador.findByIdAndUpdate(
       "id_usuario",
       { $inc: { sequence_value: 1 } },
       { new: true, upsert: true }
     );
 
-    // Crea un nuevo usuario con el valor del contador como id_usuario
-    const nuevoUsuario = new Usuario({ id_usuario: contador.sequence_value, nombre, email, password });
+    const nuevoUsuario = new Usuario({
+      id_usuario: contador.sequence_value,
+      nombre,
+      email,
+      password,
+      rol: "usuario", // 👈 SE AÑADE AUTOMÁTICAMENTE
+    });
+
     await nuevoUsuario.save();
     res.status(201).json({ message: "Usuario registrado exitosamente" });
   } catch (error) {
@@ -425,16 +431,17 @@ app.post("/registro/empresa", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await Usuario.findOne({ email });
+    const usuario = await Usuario.findOne({ email });
 
-    if (!user || user.password !== password) {
+    if (!usuario || usuario.password !== password) {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    res.status(200).json({ 
-      id_usuario: user.id_usuario,
-      nombre: user.nombre,
-      message: `¡Bienvenido ${user.nombre}!`
+    res.status(200).json({
+      id_usuario: usuario.id_usuario,
+      nombre: usuario.nombre,
+      rol: usuario.rol, // 👈 lo mandamos al frontend
+      message: `¡Bienvenido ${usuario.nombre}!`
     });
   } catch (error) {
     console.error("Error:", error);
