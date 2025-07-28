@@ -378,40 +378,6 @@ app.post("/registro", async (req, res) => {
       { new: true, upsert: true }
     );
 
-    app.post("/registro/empresa", async (req, res) => {
-      try {
-        const { nombre_empresa, email, password, descripcion, telefono, logo_url } = req.body;
-    
-        if (!nombre_empresa || !email || !password || !logo_url) {
-          return res.status(400).json({ message: "Faltan campos obligatorios" });
-        }
-    
-        // Incrementa el contador usando findByIdAndUpdate con upsert
-        const contador = await ContadorEmpresa.findByIdAndUpdate(
-          "empresa",
-          { $inc: { secuencia: 1 } },
-          { new: true, upsert: true }
-        );
-    
-        const nuevaEmpresa = new Empresa({
-          id_empresa: contador.secuencia,
-          nombre_empresa,
-          email,
-          password,
-          descripcion,
-          telefono,
-          logo: logo_url
-        });
-    
-        await nuevaEmpresa.save();
-    
-        res.status(201).json({ message: "Empresa registrada exitosamente", id_empresa: nuevaEmpresa.id_empresa });
-      } catch (error) {
-        console.error("Error al registrar empresa:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
-      }
-    });    
-
     // Crea un nuevo usuario con el valor del contador como id_usuario
     const nuevoUsuario = new Usuario({ id_usuario: contador.sequence_value, nombre, email, password });
     await nuevoUsuario.save();
@@ -421,6 +387,40 @@ app.post("/registro", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
+app.post("/registro/empresa", async (req, res) => {
+  try {
+    const { nombre_empresa, email, password, descripcion, telefono, logo_url } = req.body;
+
+    if (!nombre_empresa || !email || !password || !logo_url) {
+      return res.status(400).json({ message: "Faltan campos obligatorios" });
+    }
+
+    // Incrementa el contador usando findByIdAndUpdate con upsert
+    const contador = await ContadorEmpresa.findByIdAndUpdate(
+      "empresa",
+      { $inc: { secuencia: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const nuevaEmpresa = new Empresa({
+      id_empresa: contador.secuencia,
+      nombre_empresa,
+      email,
+      password,
+      descripcion,
+      telefono,
+      logo: logo_url
+    });
+
+    await nuevaEmpresa.save();
+
+    res.status(201).json({ message: "Empresa registrada exitosamente", id_empresa: nuevaEmpresa.id_empresa });
+  } catch (error) {
+    console.error("Error al registrar empresa:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});    
 
 // Ruta de inicio de sesión Usuarios (Login)
 app.post("/login", async (req, res) => {
