@@ -44,6 +44,27 @@ const usuarioSchema = new mongoose.Schema({
   fecha_reg: { type: Date, default: Date.now },
 });
 
+// Esquema y modelo de Empresa
+const empresaSchema = new mongoose.Schema({
+  id_empresa: Number,
+  nombre: String,
+  email: String,
+  password: String,
+  fecha_reg: { type: Date, default: Date.now }
+});
+const Empresa = mongoose.model("Empresa", empresaSchema, "empresas");
+
+// Esquema y modelo de Empleado
+const empleadoSchema = new mongoose.Schema({
+  id_empleado: Number,
+  nombre: String,
+  email: String,
+  password: String,
+  empresa_id: Number, // Relación con Empresa
+  fecha_reg: { type: Date, default: Date.now }
+});
+const Empleado = mongoose.model("Empleado", empleadoSchema, "empleados");
+
 // Define el esquema del modelo para Productos (ACTUALIZADO)
 const productoSchema = new mongoose.Schema({
   id_producto: Number, 
@@ -356,7 +377,7 @@ app.post("/registro", async (req, res) => {
   }
 });
 
-// Ruta de inicio de sesión (Login)
+// Ruta de inicio de sesión Usuarios (Login)
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -370,6 +391,55 @@ app.post("/login", async (req, res) => {
       id_usuario: user.id_usuario,
       nombre: user.nombre,
       message: `¡Bienvenido ${user.nombre}!`
+    });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Ruta de inicio de sesión para Empresa
+app.post("/login/empresa", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const empresa = await Empresa.findOne({ email });
+
+    if (!empresa || empresa.password !== password) {
+      return res.status(401).json({ message: "Credenciales inválidas" });
+    }
+
+    res.status(200).json({
+      id_empresa: empresa.id_empresa,
+      nombre: empresa.nombre,
+      message: `¡Bienvenido ${empresa.nombre}!`
+    });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Ruta de inicio de sesión para Empleado
+app.post("/login/empleado", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const empleado = await Empleado.findOne({ email });
+
+    if (!empleado || empleado.password !== password) {
+      return res.status(401).json({ message: "Credenciales inválidas" });
+    }
+
+    const empresa = await Empresa.findOne({ id_empresa: empleado.empresa_id });
+
+    if (!empresa) {
+      return res.status(403).json({ message: "Este empleado no está asociado a ninguna empresa válida." });
+    }
+
+    res.status(200).json({
+      id_empleado: empleado.id_empleado,
+      nombre: empleado.nombre,
+      id_empresa: empresa.id_empresa,
+      message: `¡Bienvenido ${empleado.nombre} de ${empresa.nombre}!`
     });
   } catch (error) {
     console.error("Error:", error);
