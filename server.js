@@ -445,8 +445,9 @@ app.post("/login", async (req, res) => {
 // Ruta de inicio de sesión para Empresa
 app.post("/login/empresa", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const empresa = await Empresa.findOne({ email });
+    const { nombre_empresa, password } = req.body;
+
+    const empresa = await Empresa.findOne({ nombre_empresa });
 
     if (!empresa || empresa.password !== password) {
       return res.status(401).json({ message: "Credenciales inválidas" });
@@ -454,8 +455,8 @@ app.post("/login/empresa", async (req, res) => {
 
     res.status(200).json({
       id_empresa: empresa.id_empresa,
-      nombre: empresa.nombre,
-      message: `¡Bienvenido ${empresa.nombre}!`
+      nombre: empresa.nombre_empresa,
+      message: `¡Bienvenido ${empresa.nombre_empresa}!`
     });
   } catch (error) {
     console.error("Error:", error);
