@@ -59,11 +59,11 @@ const Empresa = mongoose.model("Empresa", empresaSchema, "empresas");
 
 // Esquema y modelo del contador para empresas
 const contadorEmpresaSchema = new mongoose.Schema({
-  _id: { type: String, default: "empresa" },
-  secuencia: { type: Number, default: 0 }
+  _id: { type: String, default: "id_empresa" }, // O puedes dejarlo dinámico
+  sequence_value: { type: Number, default: 0 }
 });
 
-const ContadorEmpresa = mongoose.model("ContadorEmpresa", contadorEmpresaSchema, "contador_empresa");
+const ContadorEmpresa = mongoose.model("ContadorEmpresa", contadorEmpresaSchema, "contadorEmpresa");
 
 // Esquema y modelo de Empleado
 const empleadoSchema = new mongoose.Schema({
@@ -396,15 +396,14 @@ app.post("/registro/empresa", async (req, res) => {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
     }
 
-    // Incrementa el contador usando findByIdAndUpdate con upsert
     const contador = await ContadorEmpresa.findByIdAndUpdate(
-      "empresa",
-      { $inc: { secuencia: 1 } },
+      "id_empresa", // mismo _id del documento
+      { $inc: { sequence_value: 1 } },
       { new: true, upsert: true }
     );
 
     const nuevaEmpresa = new Empresa({
-      id_empresa: contador.secuencia,
+      id_empresa: contador.sequence_value,
       nombre_empresa,
       email,
       password,
@@ -420,7 +419,7 @@ app.post("/registro/empresa", async (req, res) => {
     console.error("Error al registrar empresa:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
-});    
+});
 
 // Ruta de inicio de sesión Usuarios (Login)
 app.post("/login", async (req, res) => {
