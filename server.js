@@ -678,8 +678,31 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   }
 });
 
+// Ruta para obtener todos los usuarios y empleados
+app.get("/todos-usuarios-empleados", async (req, res) => {
+  try {
+    const usuarios = await Usuario.find();
+    const empleados = await Empleado.find();
 
+    // Unificamos formato de datos
+    const usuariosNormalizados = usuarios.map(u => ({
+      ...u._doc,
+      tipo: "usuario",
+      empresa_id: u.id_empresa || null
+    }));
 
+    const empleadosNormalizados = empleados.map(e => ({
+      ...e._doc,
+      tipo: "empleado",
+      empresa_id: e.id_empresa || null
+    }));
+
+    res.status(200).json([...usuariosNormalizados, ...empleadosNormalizados]);
+  } catch (error) {
+    console.error("Error al obtener todos los usuarios y empleados:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
 
 // Nueva ruta para actualizar un usuario (incluye rol)
 app.put("/usuarios/:id", async (req, res) => {
