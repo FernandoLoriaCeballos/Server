@@ -663,13 +663,12 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
     // Empleados desde la colección empleados
     const empleadosDirectos = await Empleado.find({ id_empresa: empresaIdNum });
 
-    // Empleados desde la colección usuarios
+    // Usuarios con rol 'empleado' o 'admin_empresa' y empresa asignada
     const empleadosUsuarios = await Usuario.find({
-      rol: "empleado",
-      empresa_id: empresaIdNum
+      rol: { $in: ["empleado", "admin_empresa"] },
+      id_empresa: empresaIdNum
     });
 
-    // Combinar ambos arrays
     const todosLosEmpleados = [...empleadosDirectos, ...empleadosUsuarios];
 
     res.status(200).json(todosLosEmpleados);
@@ -678,6 +677,7 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
 
 
 // Nueva ruta para actualizar un usuario (incluye rol)
