@@ -678,39 +678,7 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   }
 });
 
-app.get("/admin/todos-los-usuarios-con-empresa", async (req, res) => {
-  try {
-    const empresas = await Empresa.find(); // Traer todas las empresas
-    const empleadosUsuarios = await Usuario.find({
-      rol: { $in: ["empleado", "admin_empresa"] }
-    });
-    const empleadosDirectos = await Empleado.find();
 
-    // Función para buscar el nombre de la empresa
-    const getNombreEmpresa = (id_empresa) => {
-      const empresa = empresas.find(emp => emp.id_empresa === id_empresa);
-      return empresa ? empresa.nombre_empresa : "Desconocida";
-    };
-
-    // Añadir campo "nombre_empresa" a cada usuario y empleado
-    const usuariosConEmpresa = empleadosUsuarios.map(u => ({
-      ...u.toObject(),
-      nombre_empresa: getNombreEmpresa(u.empresa_id || u.id_empresa)
-    }));
-
-    const empleadosConEmpresa = empleadosDirectos.map(e => ({
-      ...e.toObject(),
-      rol: "empleado",
-      nombre_empresa: getNombreEmpresa(e.id_empresa)
-    }));
-
-    // Combinar y responder
-    res.status(200).json([...usuariosConEmpresa, ...empleadosConEmpresa]);
-  } catch (error) {
-    console.error("Error al obtener todos los usuarios con empresa:", error);
-    res.status(500).json({ message: "Error del servidor" });
-  }
-});
 
 
 // Nueva ruta para actualizar un usuario (incluye rol)
