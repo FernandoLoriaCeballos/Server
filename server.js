@@ -41,7 +41,7 @@ const usuarioSchema = new mongoose.Schema({
   nombre: String,
   email: String,
   password: String,
-  rol: { type: String, enum: ["admin", "usuario"], default: "usuario" }, // 👈 nuevo campo
+  rol: { type: String, enum: ["superadmin", "admin_empresa", "empleado", "usuario"], default: "usuario" },
   fecha_reg: { type: Date, default: Date.now }
 });
 
@@ -393,6 +393,45 @@ app.post("/registro", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
+// Ruta POST exclusiva del SuperAdmin para registrar usuarios con cualquier rol
+app.post("/registro/usuarios-superadmin", async (req, res) => {
+  const { nombre, email, password, rol } = req.body;
+  const rolSolicitante = req.headers["rol"]; // El frontend debe enviar este header
+
+  if (rolSolicitante !== "superadmin") {
+    return res.status(403).json({ message: "Acceso denegado. Solo el SuperAdmin puede registrar usuarios con rol personalizado." });
+  }
+
+  const rolesPermitidos = ["superadmin", "admin_empresa", "empleado", "usuario"];
+  if (!rolesPermitidos.includes(rol)) {
+    return res.status(400).json({ message: "Rol no válido." });
+  }
+
+  try {
+    const contador = await Contador.findByIdAndUpdate(
+      "id_usuario",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const nuevoUsuario = new Usuario({
+      id_usuario: contador.sequence_value,
+      nombre,
+      email,
+      password,
+      rol,
+    });
+
+    await nuevoUsuario.save();
+    res.status(201).json({ message: "Usuario creado exitosamente por SuperAdmin" });
+  } catch (error) {
+    console.error("Error al registrar usuario (superadmin):", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+
 
 app.post("/registro/empresa", async (req, res) => {
   try {
