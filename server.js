@@ -678,23 +678,34 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   }
 });
 
-// Ruta para obtener todos los usuarios y empleados
+// Ruta para obtener todos los usuarios y empleados con nombre de empresa
 app.get("/todos-usuarios-empleados", async (req, res) => {
   try {
-    const usuarios = await Usuario.find();
-    const empleados = await Empleado.find();
+    const [usuarios, empleados, empresas] = await Promise.all([
+      Usuario.find(),
+      Empleado.find(),
+      Empresa.find()
+    ]);
+
+    // Mapa de empresas por ID
+    const empresaMap = {};
+    empresas.forEach(e => {
+      empresaMap[e.id_empresa] = e.nombre_empresa;
+    });
 
     // Unificamos formato de datos
     const usuariosNormalizados = usuarios.map(u => ({
       ...u._doc,
       tipo: "usuario",
-      empresa_id: u.id_empresa || null
+      empresa_id: u.id_empresa || null,
+      empresa_nombre: u.id_empresa ? empresaMap[u.id_empresa] || "Empresa no encontrada" : "Sin empresa"
     }));
 
     const empleadosNormalizados = empleados.map(e => ({
       ...e._doc,
       tipo: "empleado",
-      empresa_id: e.id_empresa || null
+      empresa_id: e.id_empresa || null,
+      empresa_nombre: e.id_empresa ? empresaMap[e.id_empresa] || "Empresa no encontrada" : "Sin empresa"
     }));
 
     res.status(200).json([...usuariosNormalizados, ...empleadosNormalizados]);
@@ -703,6 +714,7 @@ app.get("/todos-usuarios-empleados", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
 
 // Nueva ruta para actualizar un usuario (incluye rol)
 app.put("/usuarios/:id", async (req, res) => {
