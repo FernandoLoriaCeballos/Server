@@ -556,12 +556,20 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    res.status(200).json({
+    // Respuesta adaptada según el rol
+    const response = {
       id_usuario: usuario.id_usuario,
       nombre: usuario.nombre,
-      rol: usuario.rol, // 👈 lo mandamos al frontend
+      rol: usuario.rol,
       message: `¡Bienvenido ${usuario.nombre}!`
-    });
+    };
+
+    // Agregar empresa_id si es admin_empresa
+    if (usuario.rol === "admin_empresa") {
+      response.empresa_id = usuario.empresa_id;
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ message: "Error en el servidor" });
