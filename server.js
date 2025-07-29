@@ -689,7 +689,7 @@ app.put("/usuarios/:id", async (req, res) => {
   try {
     const usuarioActualizado = await Usuario.findByIdAndUpdate(
       id,
-      { nombre, email, password, rol, empresa_id },
+      { nombre, email, password, rol, id_empresa },
       { new: true }
     );
     res.status(200).json(usuarioActualizado);
