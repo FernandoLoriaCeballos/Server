@@ -41,8 +41,16 @@ const usuarioSchema = new mongoose.Schema({
   nombre: String,
   email: String,
   password: String,
-  rol: { type: String, enum: ["superadmin", "admin_empresa", "empleado", "usuario"], default: "usuario" },
-  fecha_reg: { type: Date, default: Date.now }
+  rol: {
+    type: String,
+    enum: ["superadmin", "admin_empresa", "empleado", "usuario"],
+    default: "usuario"
+  },
+  empresa_id: Number, // <-- nuevo campo
+  fecha_reg: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 // Esquema y modelo de Empresa
@@ -431,6 +439,78 @@ app.post("/registro/usuarios-superadmin", async (req, res) => {
   }
 });
 
+app.post("/registro/empleados-empresa", async (req, res) => {
+  const rolSolicitante = req.headers["rol"];
+  const empresaId = req.headers["empresa_id"]; // 👈 Asegúrate de enviarlo desde el frontend
+
+  if (rolSolicitante !== "admin_empresa") {
+    return res.status(403).json({ message: "Acceso denegado. Solo administradores de empresa pueden registrar empleados." });
+  }
+
+  const { nombre, email, password } = req.body;
+
+  try {
+    const contador = await Contador.findByIdAndUpdate(
+      "id_usuario",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const nuevoEmpleado = new Usuario({
+      id_usuario: contador.sequence_value,
+      nombre,
+      email,
+      password,
+      rol: "empleado",
+      empresa_id: parseInt(empresaId)
+    });
+
+    await nuevoEmpleado.save();
+    res.status(201).json({ message: "Empleado registrado exitosamente por Admin de Empresa" });
+  } catch (error) {
+    console.error("Error al registrar empleado:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Ruta POST exclusiva del Admin de Empresa para registrar empleados
+app.post("/registro/empleados-empresa", async (req, res) => {
+  const rolSolicitante = req.headers["rol"];
+  const empresaId = req.headers["empresa_id"];
+
+  if (rolSolicitante !== "admin_empresa") {
+    return res.status(403).json({ message: "Acceso denegado. Solo administradores de empresa pueden registrar empleados." });
+  }
+
+  const { nombre, email, password } = req.body;
+
+  if (!nombre || !email || !password || !empresaId) {
+    return res.status(400).json({ message: "Faltan datos obligatorios" });
+  }
+
+  try {
+    const contador = await Contador.findByIdAndUpdate(
+      "id_usuario",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const nuevoEmpleado = new Usuario({
+      id_usuario: contador.sequence_value,
+      nombre,
+      email,
+      password,
+      rol: "empleado",
+      empresa_id: parseInt(empresaId)
+    });
+
+    await nuevoEmpleado.save();
+    res.status(201).json({ message: "Empleado registrado exitosamente por Admin de Empresa" });
+  } catch (error) {
+    console.error("Error al registrar empleado:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
 
 
 app.post("/registro/empresa", async (req, res) => {
@@ -554,18 +634,33 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
+//Nueva ruta para obtener los empleados de una empresa
+app.get("/empleados/empresa/:empresa_id", async (req, res) => {
+  const { empresa_id } = req.params;
+  try {
+    const empleados = await Usuario.find({
+      rol: "empleado",
+      empresa_id: parseInt(empresa_id)
+    });
+    res.status(200).json(empleados);
+  } catch (error) {
+    console.error("Error al obtener empleados:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+
 // Nueva ruta para actualizar un usuario (incluye rol)
 app.put("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, email, password, rol } = req.body; // 👈 incluimos rol
+  const { nombre, email, password, rol, empresa_id } = req.body;
 
   try {
     const usuarioActualizado = await Usuario.findByIdAndUpdate(
       id,
-      { nombre, email, password, rol }, // 👈 también actualizamos el rol
+      { nombre, email, password, rol, empresa_id },
       { new: true }
     );
-
     res.status(200).json(usuarioActualizado);
   } catch (error) {
     console.error("Error al actualizar usuario:", error);
