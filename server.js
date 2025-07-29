@@ -556,7 +556,6 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    // Respuesta adaptada según el rol
     const response = {
       id_usuario: usuario.id_usuario,
       nombre: usuario.nombre,
@@ -564,10 +563,10 @@ app.post("/login", async (req, res) => {
       message: `¡Bienvenido ${usuario.nombre}!`
     };
 
-    // Agregar empresa_id si es admin_empresa
-    if (usuario.rol === "admin_empresa") {
-  response.id_empresa = usuario.empresa_id; // CORREGIDO NOMBRE
-}
+    // 👉 Agregar empresa_id si aplica
+    if (usuario.rol === "admin_empresa" || usuario.rol === "empleado") {
+      response.empresa_id = usuario.id_empresa;  // Usa el campo correcto
+    }
 
     res.status(200).json(response);
   } catch (error) {
