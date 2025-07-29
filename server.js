@@ -634,6 +634,18 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
+// Obtener todas las empresas
+app.get("/empresas", async (req, res) => {
+  try {
+    const empresas = await Empresa.find();
+    res.status(200).json(empresas);
+  } catch (error) {
+    console.error("Error al obtener empresas:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+
 //Nueva ruta para obtener los empleados de una empresa
 app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   const { empresa_id } = req.params;
