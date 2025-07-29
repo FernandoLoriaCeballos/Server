@@ -566,8 +566,8 @@ app.post("/login", async (req, res) => {
 
     // Agregar empresa_id si es admin_empresa
     if (usuario.rol === "admin_empresa") {
-      response.empresa_id = usuario.empresa_id;
-    }
+  response.id_empresa = usuario.empresa_id; // CORREGIDO NOMBRE
+}
 
     res.status(200).json(response);
   } catch (error) {
