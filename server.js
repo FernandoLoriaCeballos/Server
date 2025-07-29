@@ -658,10 +658,21 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   const { empresa_id } = req.params;
 
   try {
-    const empleados = await Empleado.find({
-      id_empresa: parseInt(empresa_id)
+    const empresaIdNum = parseInt(empresa_id);
+
+    // Empleados desde la colección empleados
+    const empleadosDirectos = await Empleado.find({ id_empresa: empresaIdNum });
+
+    // Empleados desde la colección usuarios
+    const empleadosUsuarios = await Usuario.find({
+      rol: "empleado",
+      empresa_id: empresaIdNum
     });
-    res.status(200).json(empleados);
+
+    // Combinar ambos arrays
+    const todosLosEmpleados = [...empleadosDirectos, ...empleadosUsuarios];
+
+    res.status(200).json(todosLosEmpleados);
   } catch (error) {
     console.error("Error al obtener empleados:", error);
     res.status(500).json({ message: "Error en el servidor" });
