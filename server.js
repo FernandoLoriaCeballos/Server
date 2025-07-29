@@ -80,7 +80,7 @@ const empleadoSchema = new mongoose.Schema({
   nombre: String,
   email: String,
   password: String,
-  empresa_id: Number, // Relación con Empresa
+  id_empresa: Number, // Relación con Empresa
   fecha_reg: { type: Date, default: Date.now }
 });
 const Empleado = mongoose.model("Empleado", empleadoSchema, "empleados");
@@ -656,10 +656,10 @@ app.get("/empresas", async (req, res) => {
 //Nueva ruta para obtener los empleados de una empresa
 app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   const { empresa_id } = req.params;
+
   try {
-    const empleados = await Usuario.find({
-      rol: "empleado",
-      empresa_id: parseInt(empresa_id)
+    const empleados = await Empleado.find({
+      id_empresa: parseInt(empresa_id)
     });
     res.status(200).json(empleados);
   } catch (error) {
