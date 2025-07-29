@@ -46,7 +46,7 @@ const usuarioSchema = new mongoose.Schema({
     enum: ["superadmin", "admin_empresa", "empleado", "usuario"],
     default: "usuario"
   },
-  empresa_id: Number, // <-- nuevo campo
+  id_empresa: Number, // <-- nuevo campo
   fecha_reg: {
     type: Date,
     default: Date.now
