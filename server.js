@@ -722,12 +722,12 @@ app.get("/todos-usuarios-empleados", async (req, res) => {
 // Nueva ruta para actualizar un usuario (incluye rol)
 app.put("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, email, password, rol, empresa_id } = req.body;
+  const { nombre, email, password, rol, id_empresa } = req.body;
 
   try {
     const usuarioActualizado = await Usuario.findByIdAndUpdate(
       id,
-      { nombre, email, password, rol, empresa_id },
+      { nombre, email, password, rol, id_empresa },
       { new: true }
     );
     res.status(200).json(usuarioActualizado);
