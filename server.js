@@ -719,23 +719,41 @@ app.get("/todos-usuarios-empleados", async (req, res) => {
 });
 
 
-// Nueva ruta para actualizar un usuario (incluye rol)
+// Nueva ruta para actualizar un usuario (incluye rol y empresa correctamente)
 app.put("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, email, password, rol, id_empresa } = req.body;
+  const { nombre, email, password, rol, empresa_id } = req.body;
 
   try {
+    // Preparamos los campos a actualizar
+    const updateFields = {
+      nombre,
+      email,
+      password,
+      rol,
+    };
+
+    // Si el rol es empleado o admin_empresa, asignamos id_empresa
+    if (rol === "empleado" || rol === "admin_empresa") {
+      updateFields.id_empresa = empresa_id ? parseInt(empresa_id) : null;
+    } else {
+      // Si no, eliminamos la asignación de empresa
+      updateFields.id_empresa = null;
+    }
+
     const usuarioActualizado = await Usuario.findByIdAndUpdate(
       id,
-      { nombre, email, password, rol, id_empresa },
+      updateFields,
       { new: true }
     );
+
     res.status(200).json(usuarioActualizado);
   } catch (error) {
     console.error("Error al actualizar usuario:", error);
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
 
 // Nueva ruta para eliminar un usuario
 app.delete("/usuarios/:id", async (req, res) => {
