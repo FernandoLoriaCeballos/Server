@@ -658,6 +658,69 @@ app.get("/empresas", async (req, res) => {
   }
 });
 
+// Agregar empresa
+app.post("/empresas", async (req, res) => {
+  try {
+    const { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
+    
+    const nuevaEmpresa = new Empresa({
+      id_empresa,
+      nombre_empresa,
+      email,
+      password,
+      descripcion,
+      telefono,
+      logo,
+      fecha_creacion: new Date()
+    });
+
+    await nuevaEmpresa.save();
+    res.status(201).json({ message: "Empresa creada exitosamente", empresa: nuevaEmpresa });
+  } catch (error) {
+    console.error("Error al crear empresa:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Actualizar empresa
+app.put("/empresas/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
+
+    const empresaActualizada = await Empresa.findByIdAndUpdate(
+      id,
+      { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo },
+      { new: true }
+    );
+
+    if (!empresaActualizada) {
+      return res.status(404).json({ message: "Empresa no encontrada" });
+    }
+
+    res.status(200).json({ message: "Empresa actualizada exitosamente", empresa: empresaActualizada });
+  } catch (error) {
+    console.error("Error al actualizar empresa:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Eliminar empresa
+app.delete("/empresas/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const empresaEliminada = await Empresa.findByIdAndDelete(id);
+
+    if (!empresaEliminada) {
+      return res.status(404).json({ message: "Empresa no encontrada" });
+    }
+
+    res.status(200).json({ message: "Empresa eliminada exitosamente" });
+  } catch (error) {
+    console.error("Error al eliminar empresa:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
 
 //Nueva ruta para obtener los empleados de una empresa
 app.get("/empleados/empresa/:empresa_id", async (req, res) => {
