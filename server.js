@@ -404,8 +404,8 @@ app.post("/registro", async (req, res) => {
 
 // Ruta POST exclusiva del SuperAdmin para registrar usuarios con cualquier rol
 app.post("/registro/usuarios-superadmin", async (req, res) => {
-  const { nombre, email, password, rol } = req.body;
-  const rolSolicitante = req.headers["rol"]; // El frontend debe enviar este header
+  const { nombre, email, password, rol, id_empresa } = req.body;
+  const rolSolicitante = req.headers["rol"];
 
   if (rolSolicitante !== "superadmin") {
     return res.status(403).json({ message: "Acceso denegado. Solo el SuperAdmin puede registrar usuarios con rol personalizado." });
@@ -429,6 +429,8 @@ app.post("/registro/usuarios-superadmin", async (req, res) => {
       email,
       password,
       rol,
+      // Agregar solo si aplica
+      ...(rol === "admin_empresa" || rol === "empleado" ? { id_empresa: parseInt(id_empresa) } : {})
     });
 
     await nuevoUsuario.save();
@@ -438,6 +440,7 @@ app.post("/registro/usuarios-superadmin", async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
+
 
 app.post("/registro/empleados-empresa", async (req, res) => {
   const rolSolicitante = req.headers["rol"];
