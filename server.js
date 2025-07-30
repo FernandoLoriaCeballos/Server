@@ -611,11 +611,12 @@ app.post("/login/empleado", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    if (id_empresa && empleado.empresa_id !== parseInt(id_empresa)) {
+    // ✅ Corregido: comparar contra id_empresa correctamente
+    if (id_empresa && empleado.id_empresa !== parseInt(id_empresa)) {
       return res.status(403).json({ message: "Este empleado no pertenece a la empresa logueada." });
     }
 
-    const empresa = await Empresa.findOne({ id_empresa: empleado.empresa_id });
+    const empresa = await Empresa.findOne({ id_empresa: empleado.id_empresa });
 
     if (!empresa) {
       return res.status(403).json({ message: "Este empleado no está asociado a ninguna empresa válida." });
@@ -625,6 +626,7 @@ app.post("/login/empleado", async (req, res) => {
       id_empleado: empleado.id_empleado,
       nombre: empleado.nombre,
       id_empresa: empresa.id_empresa,
+      rol: "empleado",
       message: `¡Bienvenido ${empleado.nombre} de ${empresa.nombre_empresa || empresa.nombre}!`
     });
   } catch (error) {
@@ -632,6 +634,7 @@ app.post("/login/empleado", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
 
 // Nueva ruta para obtener todos los usuarios
 app.get("/usuarios", async (req, res) => {
