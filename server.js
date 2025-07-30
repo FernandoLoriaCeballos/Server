@@ -658,13 +658,20 @@ app.get("/empresas", async (req, res) => {
   }
 });
 
-// Agregar empresa
+// Agregar empresa (actualizada para usar contador autoincremental)
 app.post("/empresas", async (req, res) => {
   try {
-    const { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
+    const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
     
+    // Obtener el siguiente ID autoincremental usando el contador
+    const contador = await ContadorEmpresa.findByIdAndUpdate(
+      "id_empresa",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
     const nuevaEmpresa = new Empresa({
-      id_empresa,
+      id_empresa: contador.sequence_value,
       nombre_empresa,
       email,
       password,
@@ -682,15 +689,15 @@ app.post("/empresas", async (req, res) => {
   }
 });
 
-// Actualizar empresa
+// Actualizar empresa (sin modificar id_empresa)
 app.put("/empresas/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
+    const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
 
     const empresaActualizada = await Empresa.findByIdAndUpdate(
       id,
-      { id_empresa, nombre_empresa, email, password, descripcion, telefono, logo },
+      { nombre_empresa, email, password, descripcion, telefono, logo },
       { new: true }
     );
 
