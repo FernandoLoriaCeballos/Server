@@ -2,7 +2,9 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from 'dotenv';
+import authRoutes from "./routes/auth.js";
 
+app.use("/auth", authRoutes);
 dotenv.config();
 
 // Configura la aplicación Express
@@ -18,22 +20,24 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
-app.use(express.static('dist', { setHeaders: (res, path) => {
-  if (path.endsWith('.js')) {
-    res.setHeader('Content-Type', 'application/javascript');
+app.use(express.static('dist', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
   }
-}}));
+}));
 
 // Conexión a la base de datos MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose.connect(MONGODB_URI)
-.then(() => {
-  console.log("Conectado exitosamente a MongoDB Atlas");
-})
-.catch((error) => {
-  console.error("Error de conexión a MongoDB Atlas:", error);
-});
+  .then(() => {
+    console.log("Conectado exitosamente a MongoDB Atlas");
+  })
+  .catch((error) => {
+    console.error("Error de conexión a MongoDB Atlas:", error);
+  });
 
 // Define el esquema del modelo para Usuarios
 const usuarioSchema = new mongoose.Schema({
@@ -87,7 +91,7 @@ const Empleado = mongoose.model("Empleado", empleadoSchema, "empleados");
 
 // Define el esquema del modelo para Productos (ACTUALIZADO)
 const productoSchema = new mongoose.Schema({
-  id_producto: Number, 
+  id_producto: Number,
   nombre: String,
   descripcion: String,
   precio: Number,
@@ -146,16 +150,16 @@ app.post("/productos", async (req, res) => {
       { new: true, upsert: true }
     );
 
-    const nuevoProducto = new Producto({ 
-      id_producto: contador.sequence_value, 
-      nombre, 
-      descripcion, 
+    const nuevoProducto = new Producto({
+      id_producto: contador.sequence_value,
+      nombre,
+      descripcion,
       precio,
       precio_original: null,
       en_oferta: false,
-      stock, 
-      categoria, 
-      foto 
+      stock,
+      categoria,
+      foto
     });
     await nuevoProducto.save();
     res.status(201).json({ message: "Producto agregado exitosamente" });
@@ -240,7 +244,7 @@ app.post("/ofertas", async (req, res) => {
     // Actualizar el estado de oferta del producto
     await Producto.findOneAndUpdate(
       { id_producto },
-      { 
+      {
         en_oferta: true
       }
     );
@@ -277,9 +281,9 @@ app.put("/ofertas/:id", async (req, res) => {
   try {
     const ofertaActualizada = await Oferta.findByIdAndUpdate(
       id,
-      { 
-        id_producto, 
-        descuento, 
+      {
+        id_producto,
+        descuento,
         precio_oferta,
         fecha_inicio: new Date(fecha_inicio),
         fecha_fin: new Date(fecha_fin),
@@ -291,7 +295,7 @@ app.put("/ofertas/:id", async (req, res) => {
     // Actualizar el estado de oferta del producto
     await Producto.findOneAndUpdate(
       { id_producto },
-      { 
+      {
         en_oferta: estado
       }
     );
@@ -312,7 +316,7 @@ app.delete("/ofertas/:id", async (req, res) => {
       // Restaurar el precio original del producto
       await Producto.findOneAndUpdate(
         { id_producto: oferta.id_producto },
-        { 
+        {
           precio: oferta.precio_original, // Cambio aquí
           precio_original: null,
           en_oferta: false
@@ -348,7 +352,7 @@ const verificarOfertasVencidas = async () => {
       if (producto && producto.precio_original) {
         await Producto.findOneAndUpdate(
           { id_producto: oferta.id_producto },
-          { 
+          {
             precio: producto.precio_original,
             precio_original: null,
             en_oferta: false
@@ -662,7 +666,7 @@ app.get("/empresas", async (req, res) => {
 app.post("/empresas", async (req, res) => {
   try {
     const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
-    
+
     // Obtener el siguiente ID autoincremental usando el contador
     const contador = await ContadorEmpresa.findByIdAndUpdate(
       "id_empresa",
@@ -865,7 +869,7 @@ const ContadorResena = mongoose.model("ContadorResena", contadorResenaSchema, "c
 // Ruta POST para agregar una nueva reseña
 app.post("/resenas", async (req, res) => {
   const { id_producto, id_usuario, calificacion, comentario, fecha } = req.body;
-  
+
   // Validar si se debe insertar la reseña
   if (!calificacion || !comentario) {
     res.status(400).json({ message: "Calificación y comentario son campos requeridos para la reseña." });
@@ -940,7 +944,7 @@ const reciboSchema = new mongoose.Schema({
   id_usuario: Number,
   fecha_emi: { type: Date, default: Date.now },
   detalle: String,
-  precio_total: Number, 
+  precio_total: Number,
 });
 
 // Define el modelo para Recibos
@@ -1055,13 +1059,13 @@ const catalogoSchema = new mongoose.Schema({
 });
 
 // Middleware para actualizar la fecha antes de guardar
-catalogoSchema.pre('save', function(next) {
+catalogoSchema.pre('save', function (next) {
   this.fecha_act = Date.now();
   next();
 });
 
 // Middleware para actualizar la fecha antes de actualizar
-catalogoSchema.pre('findOneAndUpdate', function(next) {
+catalogoSchema.pre('findOneAndUpdate', function (next) {
   this._update.fecha_act = Date.now();
   next();
 });
@@ -1168,10 +1172,10 @@ app.get("/carrito/:id_usuario", async (req, res) => {
   try {
     let carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
     if (!carrito) {
-      carrito = new Carrito({ 
-        id_usuario: parseInt(id_usuario), 
-        productos: [], 
-        cupon_aplicado: null 
+      carrito = new Carrito({
+        id_usuario: parseInt(id_usuario),
+        productos: [],
+        cupon_aplicado: null
       });
       await carrito.save();
     }
@@ -1186,19 +1190,19 @@ app.get("/carrito/:id_usuario", async (req, res) => {
 app.put("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
   const { productos, cupon_aplicado } = req.body;
-  
+
   try {
     const carritoActualizado = await Carrito.findOneAndUpdate(
       { id_usuario: parseInt(id_usuario) },
-      { 
-        $set: { 
+      {
+        $set: {
           productos: productos,
-          cupon_aplicado: cupon_aplicado 
-        } 
+          cupon_aplicado: cupon_aplicado
+        }
       },
       { new: true, upsert: true }
     );
-    
+
     res.status(200).json(carritoActualizado);
   } catch (error) {
     console.error(error);
@@ -1213,7 +1217,7 @@ app.post("/carrito/:id_usuario", async (req, res) => {
 
   try {
     const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
-    
+
     if (!carrito) {
       // Si el carrito no existe, créalo con el primer producto
       const nuevoCarrito = new Carrito({
@@ -1234,7 +1238,7 @@ app.post("/carrito/:id_usuario", async (req, res) => {
 
     // Buscar si el producto ya existe en el carrito
     const productoExistente = carrito.productos.find(p => p.id_producto === id_producto);
-    
+
     if (productoExistente) {
       // Actualizar la cantidad si el producto ya existe
       productoExistente.cantidad += cantidad;
@@ -1261,17 +1265,17 @@ app.post("/carrito/:id_usuario", async (req, res) => {
 // Ruta DELETE para eliminar un producto del carrito
 app.delete("/carrito/:id_usuario/:id_producto", async (req, res) => {
   const { id_usuario, id_producto } = req.params;
-  
+
   try {
     const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
-    
+
     if (!carrito) {
       return res.status(404).json({ message: "Carrito no encontrado" });
     }
 
     carrito.productos = carrito.productos.filter(p => p.id_producto !== parseInt(id_producto));
     await carrito.save();
-    
+
     res.status(200).json(carrito);
   } catch (error) {
     console.error(error);
@@ -1286,20 +1290,20 @@ app.put("/carrito/:id_usuario/:id_producto", async (req, res) => {
 
   try {
     const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
-    
+
     if (!carrito) {
       return res.status(404).json({ message: "Carrito no encontrado" });
     }
 
     const producto = carrito.productos.find(p => p.id_producto === parseInt(id_producto));
-    
+
     if (!producto) {
       return res.status(404).json({ message: "Producto no encontrado en el carrito" });
     }
 
     producto.cantidad = cantidad;
     await carrito.save();
-    
+
     res.status(200).json(carrito);
   } catch (error) {
     console.error(error);
@@ -1310,18 +1314,18 @@ app.put("/carrito/:id_usuario/:id_producto", async (req, res) => {
 // Ruta para vaciar el carrito
 app.delete("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
-  
+
   try {
     const carrito = await Carrito.findOneAndUpdate(
       { id_usuario: parseInt(id_usuario) },
       { $set: { productos: [], cupon_aplicado: null } },
       { new: true }
     );
-    
+
     if (!carrito) {
       return res.status(404).json({ message: "Carrito no encontrado" });
     }
-    
+
     res.status(200).json(carrito);
   } catch (error) {
     console.error(error);
@@ -1438,6 +1442,13 @@ app.delete("/cupones/:id", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+});
+
 
 // Inicia el servidor
 export default app;
