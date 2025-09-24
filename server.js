@@ -2,24 +2,23 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from 'dotenv';
+import cookieParser from "cookie-parser"; // ✅ Agregado
 import authRoutes from "./routes/auth.js";
 
-app.use("/auth", authRoutes);
-dotenv.config();
+dotenv.config(); // Siempre al inicio
 
-// Configura la aplicación Express
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://reviere-nube.vercel.app', // Tu URL de Vercel
-    '*' // Temporalmente para pruebas
+    'https://reviere-nube.vercel.app',
+    '*' // Temporal
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
-app.use(cookieParser());
 
 app.use("/auth", authRoutes);
 
