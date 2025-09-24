@@ -19,6 +19,13 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
+app.use(cookieParser());
+
+app.use("/auth", authRoutes);
+
+app.listen(3000, () => {
+  console.log("Servidor corriendo en http://localhost:3000");
+});
 
 app.use(express.static('dist', {
   setHeaders: (res, path) => {
