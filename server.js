@@ -1449,6 +1449,24 @@ app.delete("/cupones/:id", async (req, res) => {
   }
 });
 
+// Ruta para iniciar el flujo OAuth con Google
+app.post('/auth/google', (req, res) => {
+  const { redirectUri } = req.body;
+  if (!redirectUri) {
+    return res.status(400).json({ message: "redirectUri es requerido" });
+  }
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'consent'
+  });
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  res.json({ url: authUrl });
+});
+
 // Ejemplo de ruta para intercambio de code por access_token con Google
 app.post('/auth/google/token', async (req, res) => {
   const { code, redirectUri } = req.body;
