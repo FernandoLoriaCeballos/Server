@@ -4,6 +4,7 @@ import cors from "cors";
 import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
+import axios from "axios";
 
 dotenv.config(); // Siempre al inicio
 
@@ -1493,6 +1494,42 @@ app.post('/auth/google/token', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Ruta para intercambio de code por access_token y datos de usuario con Microsoft
+app.post('/auth/microsoft', async (req, res) => {
+  const { code, redirectUri } = req.body;
+  if (!code || !redirectUri) {
+    return res.status(400).json({ message: "code y redirectUri son requeridos" });
+  }
+  try {
+    // 1. Intercambiar code por access_token
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('client_id', process.env.MICROSOFT_CLIENT_ID);
+    tokenParams.append('scope', 'User.Read');
+    tokenParams.append('code', code);
+    tokenParams.append('redirect_uri', redirectUri);
+    tokenParams.append('grant_type', 'authorization_code');
+    tokenParams.append('client_secret', process.env.MICROSOFT_CLIENT_SECRET);
+
+    const tokenResponse = await axios.post(
+      'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+      tokenParams,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    const { access_token } = tokenResponse.data;
+
+    // 2. Obtener datos del usuario
+    const userResponse = await axios.get(
+      'https://graph.microsoft.com/v1.0/me',
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
+
+    res.json({ token: access_token, user: userResponse.data });
+  } catch (error) {
+    console.error("Error Microsoft OAuth:", error.response?.data || error.message);
+    res.status(500).json({ message: "Error en el flujo OAuth de Microsoft" });
   }
 });
 
