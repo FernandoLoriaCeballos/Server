@@ -113,4 +113,55 @@ router.post("/linkedin", async (req, res) => {
     }
 });
 
+router.post("/oxxo-pay", async (req, res) => {
+    // 1. Usa la clave secreta de tu pasarela (Conekta/Openpay)
+    const privateKey = process.env.CONEKTA_PRIVATE_KEY;
+    const api_url = "https://api.conekta.io/orders"; // URL de ejemplo para Conekta
+    const { total, email } = req.body;
+
+    if (!total || !email) {
+        return res.status(400).json({ success: false, error: "Datos de pago requeridos." });
+    }
+
+    try {
+        const orderData = {
+            currency: "MXN",
+            customer_info: { email: email },
+            charges: [{
+                amount: Math.round(parseFloat(total) * 100),
+                payment_method: {
+                    type: "oxxo_cash",
+                },
+            }],
+        };
+
+        const { data } = await axios.post(
+            api_url,
+            orderData,
+            {
+                headers: {
+                    "Authorization": `Bearer ${privateKey}`,
+                    "Content-Type": "application/json",
+                    "Conekta-Version": "2.1.0",
+                }
+            }
+        );
+
+        // Extraer la referencia y fecha de expiración
+        const oxxoCharge = data.charges.data[0];
+        const oxxoReference = oxxoCharge.payment_method.reference;
+        const expirationDate = new Date(oxxoCharge.payment_method.expires_at * 1000).toLocaleString();
+
+        res.json({
+            success: true,
+            reference: oxxoReference,
+            expirationDate: expirationDate,
+        });
+
+    } catch (error) {
+        console.error("Error al generar pago OXXO:", error.response?.data || error.message);
+        res.status(500).json({ success: false, error: "Error al procesar el pago OXXO." });
+    }
+});
+
 export default router;
