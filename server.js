@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from 'dotenv';
-import cookieParser from "cookie-parser"; // ✅ Agregado
+import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
 
 dotenv.config(); // Siempre al inicio
@@ -1443,6 +1443,35 @@ app.delete("/cupones/:id", async (req, res) => {
   try {
     await Cupon.findByIdAndDelete(id);
     res.status(200).json({ message: "Cupón eliminado exitosamente" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// Ejemplo de ruta para intercambio de code por access_token con Google
+app.post('/auth/google/token', async (req, res) => {
+  const { code, redirectUri } = req.body;
+  // Validar que redirectUri venga del frontend
+  if (!redirectUri) {
+    return res.status(400).json({ message: "redirectUri es requerido" });
+  }
+  try {
+    // Intercambio con Google usando redirectUri recibido
+    const params = new URLSearchParams();
+    params.append('code', code);
+    params.append('client_id', process.env.GOOGLE_CLIENT_ID);
+    params.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
+    params.append('redirect_uri', redirectUri); // Usar el recibido tal cual
+    params.append('grant_type', 'authorization_code');
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
+    });
+    const data = await response.json();
+    res.json(data);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error en el servidor" });

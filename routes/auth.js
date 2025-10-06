@@ -19,7 +19,7 @@ router.post("/google", async (req, res) => {
             client_id: process.env.GOOGLE_CLIENT_ID,
             client_secret: process.env.GOOGLE_CLIENT_SECRET,
             code,
-            redirect_uri: `${process.env.FRONTEND_URL}/oauth/callback/google`,
+            redirect_uri: `${process.env.FRONTEND_URL}`,
             grant_type: "authorization_code",
         });
 
