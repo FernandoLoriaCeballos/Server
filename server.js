@@ -21,6 +21,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
+const generarToken = (usuario) => {
+  return jwt.sign(usuario, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES || "1h",
+  });
+};
+
 app.use("/auth", authRoutes);
 
 app.listen(3000, () => {
@@ -1450,55 +1456,8 @@ app.delete("/cupones/:id", async (req, res) => {
   }
 });
 
-// Ruta para iniciar el flujo OAuth con Google
-app.post('/auth/google', (req, res) => {
-  const { redirectUri } = req.body;
-  if (!redirectUri) {
-    return res.status(400).json({ message: "redirectUri es requerido" });
-  }
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'consent'
-  });
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  res.json({ url: authUrl });
-});
-
-// Ejemplo de ruta para intercambio de code por access_token con Google
-app.post('/auth/google/token', async (req, res) => {
-  const { code, redirectUri } = req.body;
-  // Validar que redirectUri venga del frontend
-  if (!redirectUri) {
-    return res.status(400).json({ message: "redirectUri es requerido" });
-  }
-  try {
-    // Intercambio con Google usando redirectUri recibido
-    const params = new URLSearchParams();
-    params.append('code', code);
-    params.append('client_id', process.env.GOOGLE_CLIENT_ID);
-    params.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
-    params.append('redirect_uri', redirectUri); // Usar el recibido tal cual
-    params.append('grant_type', 'authorization_code');
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params
-    });
-    const data = await response.json();
-    res.json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error en el servidor" });
-  }
-});
-
 // Ruta para intercambio de code por access_token y datos de usuario con Microsoft
-app.post('/auth/microsoft', async (req, res) => {
+app.post('/auth/microsoft/token', async (req, res) => {
   const { code, redirectUri } = req.body;
   if (!code || !redirectUri) {
     return res.status(400).json({ message: "code y redirectUri son requeridos" });
@@ -1533,12 +1492,142 @@ app.post('/auth/microsoft', async (req, res) => {
   }
 });
 
+app.post("/auth/google/token", async (req, res) => {
+  const { code, redirectUri } = req.body;
+
+  console.log("🔹 Datos recibidos desde frontend:", { code, redirectUri });
+
+  if (!code || !redirectUri) {
+    return res.status(400).json({
+      success: false,
+      message: "Los campos 'code' y 'redirectUri' son requeridos.",
+    });
+  }
+
+  try {
+    // 1️⃣ Intercambiar code por access_token
+    console.log("🔸 Solicitando token a Google...");
+
+    const params = new URLSearchParams();
+    params.append("code", code);
+    params.append("client_id", process.env.GOOGLE_CLIENT_ID);
+    params.append("client_secret", process.env.GOOGLE_CLIENT_SECRET);
+    params.append("redirect_uri", redirectUri);
+    params.append("grant_type", "authorization_code");
+
+    const tokenResponse = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      params,
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    console.log("✅ Token recibido de Google:", tokenResponse.data);
+
+    const { access_token } = tokenResponse.data;
+    if (!access_token) {
+      throw new Error("No se recibió access_token de Google");
+    }
+
+    // 2️⃣ Obtener los datos del usuario desde Google
+    console.log("🔸 Obteniendo información del usuario...");
+
+    const userResponse = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
+
+    console.log("✅ Datos del usuario recibidos:", userResponse.data);
+
+    const usuario = {
+      nombre: userResponse.data.name,
+      email: userResponse.data.email,
+      proveedor: "google",
+      picture: userResponse.data.picture,
+    };
+
+    // 3️⃣ Generar tu JWT
+    const token = generarToken(usuario);
+
+    console.log("🎫 JWT generado correctamente.");
+
+    res.json({
+      success: true,
+      token,
+      usuario,
+    });
+  } catch (error) {
+    console.error("❌ Error en Google OAuth:");
+    console.error(error.response?.data || error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Error en el flujo OAuth de Google",
+      detalle: error.response?.data || error.message,
+    });
+  }
+});
+
+app.post("/oxxo-pay", async (req, res) => {
+  const { total, email } = req.body;
+
+  if (!total || !email) {
+    return res.status(400).json({
+      message: "Los campos 'total' y 'email' son requeridos.",
+    });
+  }
+
+  try {
+    // 1️⃣ Configuración de credenciales y URL de Conekta
+    const privateKey = process.env.CONEKTA_PRIVATE_KEY;
+    const api_url = "https://api.conekta.io/orders";
+
+    // 2️⃣ Crear la orden de pago
+    const orderData = {
+      currency: "MXN",
+      customer_info: { email },
+      charges: [
+        {
+          amount: Math.round(parseFloat(total) * 100),
+          payment_method: {
+            type: "oxxo_cash",
+          },
+        },
+      ],
+    };
+
+    const response = await axios.post(api_url, orderData, {
+      headers: {
+        Authorization: `Bearer ${privateKey}`,
+        "Content-Type": "application/json",
+        "Conekta-Version": "2.1.0",
+      },
+    });
+
+    // 3️⃣ Extraer datos del pago
+    const oxxoCharge = response.data.charges.data[0];
+    const oxxoReference = oxxoCharge.payment_method.reference;
+    const expirationDate = new Date(
+      oxxoCharge.payment_method.expires_at * 1000
+    ).toLocaleString();
+
+    res.json({
+      success: true,
+      reference: oxxoReference,
+      expirationDate,
+    });
+  } catch (error) {
+    console.error("Error al generar pago OXXO:", error.response?.data || error.message);
+    res.status(500).json({
+      message: "Error al procesar el pago OXXO.",
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
-
 
 // Inicia el servidor
 export default app;
