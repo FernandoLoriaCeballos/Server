@@ -1495,19 +1495,15 @@ app.post('/auth/microsoft/token', async (req, res) => {
 app.post("/auth/google/token", async (req, res) => {
   const { code, redirectUri } = req.body;
 
-  console.log("🔹 Datos recibidos desde frontend:", { code, redirectUri });
-
   if (!code || !redirectUri) {
     return res.status(400).json({
       success: false,
-      message: "Los campos 'code' y 'redirectUri' son requeridos.",
+      message: "code y redirectUri son requeridos",
     });
   }
 
   try {
     // 1️⃣ Intercambiar code por access_token
-    console.log("🔸 Solicitando token a Google...");
-
     const params = new URLSearchParams();
     params.append("code", code);
     params.append("client_id", process.env.GOOGLE_CLIENT_ID);
@@ -1521,22 +1517,13 @@ app.post("/auth/google/token", async (req, res) => {
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
-    console.log("✅ Token recibido de Google:", tokenResponse.data);
-
     const { access_token } = tokenResponse.data;
-    if (!access_token) {
-      throw new Error("No se recibió access_token de Google");
-    }
 
     // 2️⃣ Obtener los datos del usuario desde Google
-    console.log("🔸 Obteniendo información del usuario...");
-
     const userResponse = await axios.get(
       "https://www.googleapis.com/oauth2/v2/userinfo",
       { headers: { Authorization: `Bearer ${access_token}` } }
     );
-
-    console.log("✅ Datos del usuario recibidos:", userResponse.data);
 
     const usuario = {
       nombre: userResponse.data.name,
@@ -1548,21 +1535,16 @@ app.post("/auth/google/token", async (req, res) => {
     // 3️⃣ Generar tu JWT
     const token = generarToken(usuario);
 
-    console.log("🎫 JWT generado correctamente.");
-
     res.json({
       success: true,
       token,
       usuario,
     });
   } catch (error) {
-    console.error("❌ Error en Google OAuth:");
-    console.error(error.response?.data || error.message);
-
+    console.error("Error en Google OAuth:", error.response?.data || error.message);
     res.status(500).json({
       success: false,
       message: "Error en el flujo OAuth de Google",
-      detalle: error.response?.data || error.message,
     });
   }
 });
