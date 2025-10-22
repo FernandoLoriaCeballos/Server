@@ -45,19 +45,8 @@ app.use(express.static('dist', {
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose.connect(MONGODB_URI)
-  .then(async () => {
+  .then(() => {
     console.log("Conectado exitosamente a MongoDB Atlas");
-    
-    // Actualizar productos existentes para agregar id_empresa
-    try {
-      await Producto.updateMany(
-        { id_empresa: { $exists: false } }, // busca documentos sin id_empresa
-        { $set: { id_empresa: 1 } } // establece un valor por defecto
-      );
-      console.log("Productos actualizados con id_empresa");
-    } catch (error) {
-      console.error("Error actualizando productos:", error);
-    }
   })
   .catch((error) => {
     console.error("Error de conexión a MongoDB Atlas:", error);
@@ -124,7 +113,10 @@ const productoSchema = new mongoose.Schema({
   stock: Number,
   categoria: String,
   foto: String,
-  id_empresa: Number, // Nuevo campo
+  id_empresa: { 
+    type: Number,
+    required: true // Hacemos que sea obligatorio
+  },
   fecha_reg: { type: Date, default: Date.now },
 });
 
@@ -168,6 +160,12 @@ const ContadorOferta = mongoose.model("ContadorOferta", contadorOfertaSchema, "c
 // Ruta POST para agregar un nuevo producto
 app.post("/productos", async (req, res) => {
   const { nombre, descripcion, precio, stock, categoria, foto, id_empresa } = req.body;
+  
+  // Validar que se proporcione id_empresa
+  if (!id_empresa) {
+    return res.status(400).json({ message: "El id_empresa es requerido" });
+  }
+
   try {
     const contador = await ContadorProducto.findByIdAndUpdate(
       "id_producto",
