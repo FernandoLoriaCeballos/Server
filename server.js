@@ -108,11 +108,12 @@ const productoSchema = new mongoose.Schema({
   nombre: String,
   descripcion: String,
   precio: Number,
-  precio_original: Number, // Nuevo campo para guardar el precio original
-  en_oferta: { type: Boolean, default: false }, // Nuevo campo para indicar si está en oferta
+  precio_original: Number,
+  en_oferta: { type: Boolean, default: false },
   stock: Number,
   categoria: String,
   foto: String,
+  id_empresa: Number, // Nuevo campo
   fecha_reg: { type: Date, default: Date.now },
 });
 
@@ -155,7 +156,7 @@ const ContadorOferta = mongoose.model("ContadorOferta", contadorOfertaSchema, "c
 
 // Ruta POST para agregar un nuevo producto
 app.post("/productos", async (req, res) => {
-  const { nombre, descripcion, precio, stock, categoria, foto } = req.body;
+  const { nombre, descripcion, precio, stock, categoria, foto, id_empresa } = req.body;
   try {
     const contador = await ContadorProducto.findByIdAndUpdate(
       "id_producto",
@@ -172,7 +173,8 @@ app.post("/productos", async (req, res) => {
       en_oferta: false,
       stock,
       categoria,
-      foto
+      foto,
+      id_empresa: parseInt(id_empresa)
     });
     await nuevoProducto.save();
     res.status(201).json({ message: "Producto agregado exitosamente" });
@@ -185,7 +187,15 @@ app.post("/productos", async (req, res) => {
 // Ruta GET para obtener todos los productos
 app.get("/productos", async (req, res) => {
   try {
-    const productos = await Producto.find();
+    const { id_empresa } = req.query; // Obtener id_empresa de los query params
+    let query = {};
+    
+    // Si se proporciona id_empresa, filtrar por empresa
+    if (id_empresa) {
+      query.id_empresa = parseInt(id_empresa);
+    }
+    
+    const productos = await Producto.find(query);
     res.status(200).json(productos);
   } catch (error) {
     console.error(error);
@@ -1311,7 +1321,7 @@ app.put("/carrito/:id_usuario/:id_producto", async (req, res) => {
     const producto = carrito.productos.find(p => p.id_producto === parseInt(id_producto));
 
     if (!producto) {
-      return res.status(404).json({ message: "Producto no encontrado en el carrito" });
+      return res.status(404).json({ message: "Producto no encontrado in carrito" });
     }
 
     producto.cantidad = cantidad;
