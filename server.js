@@ -290,7 +290,7 @@ const ContadorOferta = mongoose.model("ContadorOferta", contadorOfertaSchema, "c
 // Rutas de Productos
 
 // Ruta POST para agregar un nuevo producto
-app.post("/productos", upload.single('foto'), async (req, res) => {
+app.post("/productos", uploadProduct.single('foto'), async (req, res) => {
   const { nombre, descripcion, precio, stock, categoria, id_empresa } = req.body;
   const foto = req.file ? req.file.filename : null;
   
