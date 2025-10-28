@@ -76,19 +76,23 @@ app.post(
   uploadCompany.fields([{ name: "logo", maxCount: 1 }]),
   async (req, res) => {
     try {
+      // Ver qué llega realmente
+      console.log("BODY:", req.body);
+      console.log("FILES:", req.files);
+
       const { nombre_empresa, email, password, descripcion, telefono } = req.body;
 
       if (!nombre_empresa || !email || !password) {
         return res.status(400).json({ message: "Faltan datos obligatorios" });
       }
 
-      // Ruta del logo si se subió
+      // Si se subió archivo, lo guardamos
       let logoUrl = null;
-      if (req.files && req.files.logo && req.files.logo[0]) {
+      if (req.files && req.files.logo && req.files.logo.length > 0) {
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
       }
 
-      // Crear empresa en la base de datos
+      // Crear empresa
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
@@ -101,6 +105,7 @@ app.post(
       res.status(201).json({
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
+        logo: logoUrl,
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
@@ -664,25 +669,29 @@ app.post("/registro/empleados-empresa", async (req, res) => {
 });
 
 
-// REEMPLAZADO: endpoint único y corregido para /registro/empresa
+// REEMPLAZAR /registro/empresa por esta versión que acepta campos + archivo y loggea lo recibido
 app.post(
   "/registro/empresa",
-  uploadCompany.fields([{ name: "logo", maxCount: 1 }]),
+  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // <- ACEPTA CAMPOS + ARCHIVO
   async (req, res) => {
     try {
+      // Ver qué llega realmente
+      console.log("BODY:", req.body);
+      console.log("FILES:", req.files);
+
       const { nombre_empresa, email, password, descripcion, telefono } = req.body;
 
       if (!nombre_empresa || !email || !password) {
         return res.status(400).json({ message: "Faltan datos obligatorios" });
       }
 
-      // Ruta del logo si se subió
+      // Si se subió archivo, lo guardamos
       let logoUrl = null;
-      if (req.files && req.files.logo && req.files.logo[0]) {
+      if (req.files && req.files.logo && req.files.logo.length > 0) {
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
       }
 
-      // Crear empresa en la base de datos
+      // Crear empresa
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
@@ -695,6 +704,7 @@ app.post(
       res.status(201).json({
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
+        logo: logoUrl,
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
