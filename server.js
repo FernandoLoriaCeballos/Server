@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
 import axios from "axios";
-import fs from 'fs';
-import path from 'path';
-import multer from 'multer';
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 
 dotenv.config(); // Siempre al inicio
 
@@ -32,9 +32,7 @@ const generarToken = (usuario) => {
 
 app.use("/auth", authRoutes);
 
-app.listen(3000, () => {
-  console.log("Servidor corriendo en http://localhost:3000");
-});
+// <-- REMOVED this early listener to avoid double listen (was: app.listen(3000,...)) -->
 
 app.use(express.static('dist', {
   setHeaders: (res, path) => {
@@ -44,93 +42,30 @@ app.use(express.static('dist', {
   }
 }));
 
-// --- START: multer + uploads setup ---
+// --- START: uploads + multer setup ---
 const UPLOADS_BASE = path.join(process.cwd(), 'uploads');
 const COMPANY_UPLOADS = path.join(UPLOADS_BASE, 'companies');
 const PRODUCT_UPLOADS = path.join(UPLOADS_BASE, 'products');
-
-// ensure folders exist
 fs.mkdirSync(COMPANY_UPLOADS, { recursive: true });
 fs.mkdirSync(PRODUCT_UPLOADS, { recursive: true });
-
-// serve uploaded files
+// servir archivos subidos
 app.use('/uploads', express.static(UPLOADS_BASE));
-
-// helper to create filename
 const makeFilename = (originalName) => {
   const timestamp = Date.now();
   const safeName = originalName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\.-]/g, '');
   return `${timestamp}_${safeName}`;
 };
-
-// storage for company logos
 const companyStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, COMPANY_UPLOADS),
   filename: (req, file, cb) => cb(null, makeFilename(file.originalname))
 });
-const uploadCompany = multer({ storage: companyStorage });
-
-// storage for product photos
 const productStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, PRODUCT_UPLOADS),
   filename: (req, file, cb) => cb(null, makeFilename(file.originalname))
 });
+const uploadCompany = multer({ storage: companyStorage });
 const uploadProduct = multer({ storage: productStorage });
-
-// Endpoint: upload company logo
-// FormData field name: 'logo'
-// Optional URL param :empresaId (numeric id_empresa) to update Empresa.logo
-app.post('/upload/company-logo/:empresaId?', uploadCompany.single('logo'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded (field name: logo)' });
-
-    const relativePath = `/uploads/companies/${req.file.filename}`; // URL to serve
-    const { empresaId } = req.params;
-
-    if (empresaId) {
-      const empresa = await Empresa.findOneAndUpdate(
-        { id_empresa: parseInt(empresaId) },
-        { logo: relativePath },
-        { new: true }
-      );
-      if (!empresa) return res.status(404).json({ message: 'Empresa no encontrada para el id proporcionado' });
-      return res.status(200).json({ message: 'Logo subido y empresa actualizada', empresa, logoUrl: relativePath });
-    }
-
-    res.status(201).json({ message: 'Logo subido', logoUrl: relativePath });
-  } catch (error) {
-    console.error('Error uploading company logo:', error);
-    res.status(500).json({ message: 'Error en la subida' });
-  }
-});
-
-// Endpoint: upload product photo
-// FormData field name: 'foto'
-// Optional URL param :id_producto (numeric id_producto) to update Producto.foto
-app.post('/upload/product-photo/:id_producto?', uploadProduct.single('foto'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded (field name: foto)' });
-
-    const relativePath = `/uploads/products/${req.file.filename}`;
-    const { id_producto } = req.params;
-
-    if (id_producto) {
-      const producto = await Producto.findOneAndUpdate(
-        { id_producto: parseInt(id_producto) },
-        { foto: relativePath },
-        { new: true }
-      );
-      if (!producto) return res.status(404).json({ message: 'Producto no encontrado para el id_producto proporcionado' });
-      return res.status(200).json({ message: 'Foto subida y producto actualizado', producto, fotoUrl: relativePath });
-    }
-
-    res.status(201).json({ message: 'Foto de producto subida', fotoUrl: relativePath });
-  } catch (error) {
-    console.error('Error uploading product photo:', error);
-    res.status(500).json({ message: 'Error en la subida' });
-  }
-});
-// --- END: multer + uploads setup ---
+// --- END: uploads + multer setup ---
 
 // Conexión a la base de datos MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -643,19 +578,23 @@ app.post("/registro/empleados-empresa", async (req, res) => {
 });
 
 
-app.post("/registro/empresa", async (req, res) => {
+app.post("/registro/empresa", uploadCompany.single('logo'), async (req, res) => {
   try {
-    const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
+    // campos del formulario (si envías FormData desde frontend)
+    const { nombre_empresa, email, password, descripcion, telefono } = req.body;
 
     if (!nombre_empresa || !email || !password) {
       return res.status(400).json({ message: "Faltan campos obligatorios (nombre_empresa, email, password)" });
     }
 
     const contador = await ContadorEmpresa.findByIdAndUpdate(
-      "id_empresa", // mismo _id del documento
+      "id_empresa",
       { $inc: { sequence_value: 1 } },
       { new: true, upsert: true }
     );
+
+    // si hubo archivo, usar la ruta relativa servida por /uploads
+    const logoPath = req.file ? `/uploads/companies/${req.file.filename}` : null;
 
     const nuevaEmpresa = new Empresa({
       id_empresa: contador.sequence_value,
@@ -664,15 +603,47 @@ app.post("/registro/empresa", async (req, res) => {
       password,
       descripcion,
       telefono,
-      logo: logo || null
+      logo: logoPath
     });
 
     await nuevaEmpresa.save();
 
-    res.status(201).json({ message: "Empresa registrada exitosamente", id_empresa: nuevaEmpresa.id_empresa });
+    res.status(201).json({ message: "Empresa registrada exitosamente", id_empresa: nuevaEmpresa.id_empresa, empresa: nuevaEmpresa });
   } catch (error) {
     console.error("Error al registrar empresa:", error);
     res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+// OPTIONAL: accept file when creating via /empresas as well
+app.post("/empresas", uploadCompany.single('logo'), async (req, res) => {
+  try {
+    const { nombre_empresa, email, password, descripcion, telefono } = req.body;
+
+    const contador = await ContadorEmpresa.findByIdAndUpdate(
+      "id_empresa",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const logoPath = req.file ? `/uploads/companies/${req.file.filename}` : null;
+
+    const nuevaEmpresa = new Empresa({
+      id_empresa: contador.sequence_value,
+      nombre_empresa,
+      email,
+      password,
+      descripcion,
+      telefono,
+      logo: logoPath,
+      fecha_creacion: new Date()
+    });
+
+    await nuevaEmpresa.save();
+    res.status(201).json({ message: "Empresa creada exitosamente", empresa: nuevaEmpresa });
+  } catch (error) {
+    console.error("Error al crear empresa:", error);
+    res.status(500).json({ message: "Error en el servidor" });
   }
 });
 
@@ -804,8 +775,7 @@ app.post("/empresas", async (req, res) => {
       password,
       descripcion,
       telefono,
-      // Aceptamos 'logo' tal cual, sin exigir que sea una URL
-      logo: logo || null,
+      logo,
       fecha_creacion: new Date()
     });
 
