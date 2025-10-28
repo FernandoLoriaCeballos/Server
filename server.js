@@ -76,58 +76,55 @@ app.post(
   uploadCompany.fields([{ name: "logo", maxCount: 1 }]),
   async (req, res) => {
     try {
-      // Depuración: confirma qué llega desde el frontend
-      console.log("[/registro/empresa] headers:", {
-        'content-type': req.headers['content-type'],
-        origin: req.headers.origin
-      });
-      console.log("[/registro/empresa] body:", req.body);
-      console.log("[/registro/empresa] files:", req.files);
-
       const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
 
       if (!nombre_empresa || !email || !password) {
-        // devolver datos recibidos ayuda a depurar desde el front
-        return res.status(400).json({
-          message: "Faltan datos obligatorios (nombre_empresa, email, password)",
-          receivedBody: req.body,
-          receivedFiles: req.files || null
-        });
+        return res.status(400).json({ message: "Faltan datos obligatorios (nombre_empresa, email, password)" });
       }
 
-      // Si se subió archivo, construimos la ruta servida
-      let logoUrl = null;
+      // Determinar nombre de archivo (solo filename)
+      let logoFilename = null;
+
       if (req.files && req.files.logo && req.files.logo.length > 0) {
-        logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
-      }
-
-      // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
-      if (!logoUrl && logoStr) {
-        const v = logoStr;
-        if (typeof v === 'string' && v.trim()) {
-          if (/^https?:\/\//i.test(v)) {
-            logoUrl = v.trim();
-          } else if (v.includes('/uploads/')) {
-            logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
-          } else {
-            logoUrl = `/uploads/companies/${v.trim()}`;
+        // Si se subió archivo, guardamos solo el filename
+        logoFilename = req.files.logo[0].filename;
+      } else if (logoStr && typeof logoStr === "string" && logoStr.trim()) {
+        const v = logoStr.trim();
+        // Si es URL o ruta que incluye /uploads/, extraer basename
+        if (/^https?:\/\//i.test(v)) {
+          try {
+            logoFilename = path.basename(new URL(v).pathname);
+          } catch {
+            logoFilename = path.basename(v);
           }
+        } else if (v.includes("/uploads/")) {
+          logoFilename = path.basename(v);
+        } else {
+          // asumimos que el usuario proporcionó solo el nombre del archivo
+          logoFilename = v;
         }
       }
 
+      // Crear empresa guardando solo el nombre del archivo en el campo 'logo'
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
         password,
         descripcion,
         telefono,
-        logo: logoUrl,
+        logo: logoFilename, // solo filename
       });
+
+      // Construir URL pública para vista previa si hay filename
+      const logoUrlPublic = logoFilename
+        ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
+        : null;
 
       res.status(201).json({
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
-        logo: logoUrl,
+        logoFilename,
+        logoUrl: logoUrlPublic
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
@@ -651,64 +648,61 @@ app.post("/registro/empleados-empresa", async (req, res) => {
   }
 });
 
-// SINGLE, FINAL /registro/empresa endpoint (acepta campos + archivo)
+// SINGLE /registro/empresa endpoint: guarda SOLO el nombre del archivo en la BD
 app.post(
   "/registro/empresa",
   uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // acepta campos de texto + archivo
   async (req, res) => {
     try {
-      // Depuración: confirma qué llega desde el frontend
-      console.log("[/registro/empresa] headers:", {
-        'content-type': req.headers['content-type'],
-        origin: req.headers.origin
-      });
-      console.log("[/registro/empresa] body:", req.body);
-      console.log("[/registro/empresa] files:", req.files);
-
       const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
 
       if (!nombre_empresa || !email || !password) {
-        // devolver datos recibidos ayuda a depurar desde el front
-        return res.status(400).json({
-          message: "Faltan datos obligatorios (nombre_empresa, email, password)",
-          receivedBody: req.body,
-          receivedFiles: req.files || null
-        });
+        return res.status(400).json({ message: "Faltan datos obligatorios (nombre_empresa, email, password)" });
       }
 
-      // Si se subió archivo, construimos la ruta servida
-      let logoUrl = null;
+      // Determinar nombre de archivo (solo filename)
+      let logoFilename = null;
+
       if (req.files && req.files.logo && req.files.logo.length > 0) {
-        logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
-      }
-
-      // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
-      if (!logoUrl && logoStr) {
-        const v = logoStr;
-        if (typeof v === 'string' && v.trim()) {
-          if (/^https?:\/\//i.test(v)) {
-            logoUrl = v.trim();
-          } else if (v.includes('/uploads/')) {
-            logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
-          } else {
-            logoUrl = `/uploads/companies/${v.trim()}`;
+        // Si se subió archivo, guardamos solo el filename
+        logoFilename = req.files.logo[0].filename;
+      } else if (logoStr && typeof logoStr === "string" && logoStr.trim()) {
+        const v = logoStr.trim();
+        // Si es URL o ruta que incluye /uploads/, extraer basename
+        if (/^https?:\/\//i.test(v)) {
+          try {
+            logoFilename = path.basename(new URL(v).pathname);
+          } catch {
+            logoFilename = path.basename(v);
           }
+        } else if (v.includes("/uploads/")) {
+          logoFilename = path.basename(v);
+        } else {
+          // asumimos que el usuario proporcionó solo el nombre del archivo
+          logoFilename = v;
         }
       }
 
+      // Crear empresa guardando solo el nombre del archivo en el campo 'logo'
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
         password,
         descripcion,
         telefono,
-        logo: logoUrl,
+        logo: logoFilename, // solo filename
       });
+
+      // Construir URL pública para vista previa si hay filename
+      const logoUrlPublic = logoFilename
+        ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
+        : null;
 
       res.status(201).json({
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
-        logo: logoUrl,
+        logoFilename,
+        logoUrl: logoUrlPublic
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
