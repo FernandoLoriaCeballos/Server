@@ -92,6 +92,22 @@ app.post(
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
       }
 
+      // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
+      // Puede ser: full URL, ruta que incluye /uploads/..., o solo nombre de archivo.
+      if (!logoUrl && req.body && req.body.logoStr) {
+        const v = req.body.logoStr;
+        if (typeof v === 'string' && v.trim()) {
+          if (/^https?:\/\//i.test(v)) {
+            logoUrl = v.trim();
+          } else if (v.includes('/uploads/')) {
+            logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
+          } else {
+            // asume solo nombre de archivo -> carpeta companies
+            logoUrl = `/uploads/companies/${v.trim()}`;
+          }
+        }
+      }
+
       // Crear empresa
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
@@ -689,6 +705,22 @@ app.post(
       let logoUrl = null;
       if (req.files && req.files.logo && req.files.logo.length > 0) {
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
+      }
+
+      // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
+      // Puede ser: full URL, ruta que incluye /uploads/..., o solo nombre de archivo.
+      if (!logoUrl && req.body && req.body.logoStr) {
+        const v = req.body.logoStr;
+        if (typeof v === 'string' && v.trim()) {
+          if (/^https?:\/\//i.test(v)) {
+            logoUrl = v.trim();
+          } else if (v.includes('/uploads/')) {
+            logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
+          } else {
+            // asume solo nombre de archivo -> carpeta companies
+            logoUrl = `/uploads/companies/${v.trim()}`;
+          }
+        }
       }
 
       // Crear empresa
