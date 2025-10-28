@@ -5,6 +5,9 @@ import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
 import axios from "axios";
+import fs from 'fs';
+import path from 'path';
+import multer from 'multer';
 
 dotenv.config(); // Siempre al inicio
 
@@ -40,6 +43,94 @@ app.use(express.static('dist', {
     }
   }
 }));
+
+// --- START: multer + uploads setup ---
+const UPLOADS_BASE = path.join(process.cwd(), 'uploads');
+const COMPANY_UPLOADS = path.join(UPLOADS_BASE, 'companies');
+const PRODUCT_UPLOADS = path.join(UPLOADS_BASE, 'products');
+
+// ensure folders exist
+fs.mkdirSync(COMPANY_UPLOADS, { recursive: true });
+fs.mkdirSync(PRODUCT_UPLOADS, { recursive: true });
+
+// serve uploaded files
+app.use('/uploads', express.static(UPLOADS_BASE));
+
+// helper to create filename
+const makeFilename = (originalName) => {
+  const timestamp = Date.now();
+  const safeName = originalName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\.-]/g, '');
+  return `${timestamp}_${safeName}`;
+};
+
+// storage for company logos
+const companyStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, COMPANY_UPLOADS),
+  filename: (req, file, cb) => cb(null, makeFilename(file.originalname))
+});
+const uploadCompany = multer({ storage: companyStorage });
+
+// storage for product photos
+const productStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, PRODUCT_UPLOADS),
+  filename: (req, file, cb) => cb(null, makeFilename(file.originalname))
+});
+const uploadProduct = multer({ storage: productStorage });
+
+// Endpoint: upload company logo
+// FormData field name: 'logo'
+// Optional URL param :empresaId (numeric id_empresa) to update Empresa.logo
+app.post('/upload/company-logo/:empresaId?', uploadCompany.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded (field name: logo)' });
+
+    const relativePath = `/uploads/companies/${req.file.filename}`; // URL to serve
+    const { empresaId } = req.params;
+
+    if (empresaId) {
+      const empresa = await Empresa.findOneAndUpdate(
+        { id_empresa: parseInt(empresaId) },
+        { logo: relativePath },
+        { new: true }
+      );
+      if (!empresa) return res.status(404).json({ message: 'Empresa no encontrada para el id proporcionado' });
+      return res.status(200).json({ message: 'Logo subido y empresa actualizada', empresa, logoUrl: relativePath });
+    }
+
+    res.status(201).json({ message: 'Logo subido', logoUrl: relativePath });
+  } catch (error) {
+    console.error('Error uploading company logo:', error);
+    res.status(500).json({ message: 'Error en la subida' });
+  }
+});
+
+// Endpoint: upload product photo
+// FormData field name: 'foto'
+// Optional URL param :id_producto (numeric id_producto) to update Producto.foto
+app.post('/upload/product-photo/:id_producto?', uploadProduct.single('foto'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded (field name: foto)' });
+
+    const relativePath = `/uploads/products/${req.file.filename}`;
+    const { id_producto } = req.params;
+
+    if (id_producto) {
+      const producto = await Producto.findOneAndUpdate(
+        { id_producto: parseInt(id_producto) },
+        { foto: relativePath },
+        { new: true }
+      );
+      if (!producto) return res.status(404).json({ message: 'Producto no encontrado para el id_producto proporcionado' });
+      return res.status(200).json({ message: 'Foto subida y producto actualizado', producto, fotoUrl: relativePath });
+    }
+
+    res.status(201).json({ message: 'Foto de producto subida', fotoUrl: relativePath });
+  } catch (error) {
+    console.error('Error uploading product photo:', error);
+    res.status(500).json({ message: 'Error en la subida' });
+  }
+});
+// --- END: multer + uploads setup ---
 
 // Conexión a la base de datos MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
