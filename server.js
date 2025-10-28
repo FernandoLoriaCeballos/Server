@@ -174,14 +174,33 @@ app.all("/upload/*", (req, res) => {
 });
 
 // Conexión a la base de datos MongoDB
-const MONGODB_URI = process.env.MONGODB_URI;
+// Usa la variable de entorno si está; si no, usa un fallback local para desarrollo.
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/proyectitos_dev";
 
-mongoose.connect(MONGODB_URI)
+if (!process.env.MONGODB_URI) {
+  console.warn(
+    "WARN: MONGODB_URI no está definida. Se usará el fallback local:",
+    MONGODB_URI,
+    "\nAsegúrate de configurar la variable de entorno MONGODB_URI para producción."
+  );
+}
+
+mongoose
+  .connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => {
-    console.log("Conectado exitosamente a MongoDB Atlas");
+    console.log("Conectado exitosamente a MongoDB");
   })
   .catch((error) => {
-    console.error("Error de conexión a MongoDB Atlas:", error);
+    console.error("Error de conexión a MongoDB:", error.message || error);
+    // Mensaje adicional que ayuda a diagnosticar cuando la URI no está definida o es inválida
+    if (!process.env.MONGODB_URI) {
+      console.error(
+        "Nota: MONGODB_URI no estaba definida. Define MONGODB_URI en tu .env o en la configuración del hosting."
+      );
+    }
   });
 
 // Define el esquema del modelo para Usuarios
@@ -651,24 +670,26 @@ app.post("/registro/empleados-empresa", async (req, res) => {
 // SINGLE /registro/empresa endpoint: guarda SOLO el nombre del archivo en la BD
 app.post(
   "/registro/empresa",
-  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // acepta campos de texto + archivo
+  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // acepta archivo + otros campos
   async (req, res) => {
     try {
       const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
 
       if (!nombre_empresa || !email || !password) {
-        return res.status(400).json({ message: "Faltan datos obligatorios (nombre_empresa, email, password)" });
+        return res.status(400).json({
+          message: "Faltan datos obligatorios (nombre_empresa, email, password)",
+        });
       }
 
-      // Determinar nombre de archivo (solo filename)
+      // Determinar el nombre de archivo que se guardará
       let logoFilename = null;
 
       if (req.files && req.files.logo && req.files.logo.length > 0) {
-        // Si se subió archivo, guardamos solo el filename
+        // Si se subió archivo, usar el filename generado por multer
         logoFilename = req.files.logo[0].filename;
       } else if (logoStr && typeof logoStr === "string" && logoStr.trim()) {
         const v = logoStr.trim();
-        // Si es URL o ruta que incluye /uploads/, extraer basename
+        // Extraer solo el basename si es URL o contiene /uploads/
         if (/^https?:\/\//i.test(v)) {
           try {
             logoFilename = path.basename(new URL(v).pathname);
@@ -678,22 +699,21 @@ app.post(
         } else if (v.includes("/uploads/")) {
           logoFilename = path.basename(v);
         } else {
-          // asumimos que el usuario proporcionó solo el nombre del archivo
-          logoFilename = v;
+          logoFilename = v; // nombre proporcionado directamente
         }
       }
 
-      // Crear empresa guardando solo el nombre del archivo en el campo 'logo'
+      // Guardar empresa en la base de datos
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
         password,
         descripcion,
         telefono,
-        logo: logoFilename, // solo filename
+        logo: logoFilename, // solo el nombre del archivo
       });
 
-      // Construir URL pública para vista previa si hay filename
+      // Construir URL pública para vista previa
       const logoUrlPublic = logoFilename
         ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
         : null;
@@ -702,7 +722,7 @@ app.post(
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
         logoFilename,
-        logoUrl: logoUrlPublic
+        logoUrl: logoUrlPublic, // para que el frontend pueda mostrar preview
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
@@ -711,8 +731,8 @@ app.post(
   }
 );
 
-// OPTIONAL: accept file when creating via /empresas as well
-app.post("/empresas", uploadCompany.single('logo'), async (req, res) => {
+// ✅ Ruta opcional /empresas (simplificada)
+app.post("/empresas", uploadCompany.single("logo"), async (req, res) => {
   try {
     const { nombre_empresa, email, password, descripcion, telefono } = req.body;
 
@@ -722,7 +742,8 @@ app.post("/empresas", uploadCompany.single('logo'), async (req, res) => {
       { new: true, upsert: true }
     );
 
-    const logoPath = req.file ? `/uploads/companies/${req.file.filename}` : null;
+    // Guardar solo el filename en logo
+    const logoFilename = req.file ? req.file.filename : null;
 
     const nuevaEmpresa = new Empresa({
       id_empresa: contador.sequence_value,
@@ -731,17 +752,31 @@ app.post("/empresas", uploadCompany.single('logo'), async (req, res) => {
       password,
       descripcion,
       telefono,
-      logo: logoPath,
-      fecha_creacion: new Date()
+      logo: logoFilename, // solo filename
+      fecha_creacion: new Date(),
     });
 
     await nuevaEmpresa.save();
-    res.status(201).json({ message: "Empresa creada exitosamente", empresa: nuevaEmpresa });
+
+    // Construir URL pública para frontend
+    const logoUrlPublic = logoFilename
+      ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
+      : null;
+
+    res.status(201).json({
+      message: "Empresa creada exitosamente",
+      empresa: nuevaEmpresa,
+      logoFilename,
+      logoUrl: logoUrlPublic,
+    });
   } catch (error) {
     console.error("Error al crear empresa:", error);
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
+
+// ✅ Servir archivos estáticos (necesario para mostrar imagen)
+app.use("/uploads", express.static(path.join("uploads")));
 
 // Ruta de inicio de sesión Usuarios (Login)
 app.post("/login", async (req, res) => {
