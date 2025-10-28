@@ -554,10 +554,10 @@ app.post("/registro/empleados-empresa", async (req, res) => {
 
 app.post("/registro/empresa", async (req, res) => {
   try {
-    const { nombre_empresa, email, password, descripcion, telefono, logo_url } = req.body;
+    const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
 
-    if (!nombre_empresa || !email || !password || !logo_url) {
-      return res.status(400).json({ message: "Faltan campos obligatorios" });
+    if (!nombre_empresa || !email || !password) {
+      return res.status(400).json({ message: "Faltan campos obligatorios (nombre_empresa, email, password)" });
     }
 
     const contador = await ContadorEmpresa.findByIdAndUpdate(
@@ -573,7 +573,7 @@ app.post("/registro/empresa", async (req, res) => {
       password,
       descripcion,
       telefono,
-      logo: logo_url
+      logo: logo || null
     });
 
     await nuevaEmpresa.save();
@@ -713,7 +713,8 @@ app.post("/empresas", async (req, res) => {
       password,
       descripcion,
       telefono,
-      logo,
+      // Aceptamos 'logo' tal cual, sin exigir que sea una URL
+      logo: logo || null,
       fecha_creacion: new Date()
     });
 
