@@ -76,39 +76,45 @@ app.post(
   uploadCompany.fields([{ name: "logo", maxCount: 1 }]),
   async (req, res) => {
     try {
-      // Ver qué llega realmente
-      console.log("BODY:", req.body);
-      console.log("FILES:", req.files);
+      // Depuración: confirma qué llega desde el frontend
+      console.log("[/registro/empresa] headers:", {
+        'content-type': req.headers['content-type'],
+        origin: req.headers.origin
+      });
+      console.log("[/registro/empresa] body:", req.body);
+      console.log("[/registro/empresa] files:", req.files);
 
-      const { nombre_empresa, email, password, descripcion, telefono } = req.body;
+      const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
 
       if (!nombre_empresa || !email || !password) {
-        return res.status(400).json({ message: "Faltan datos obligatorios" });
+        // devolver datos recibidos ayuda a depurar desde el front
+        return res.status(400).json({
+          message: "Faltan datos obligatorios (nombre_empresa, email, password)",
+          receivedBody: req.body,
+          receivedFiles: req.files || null
+        });
       }
 
-      // Si se subió archivo, lo guardamos
+      // Si se subió archivo, construimos la ruta servida
       let logoUrl = null;
       if (req.files && req.files.logo && req.files.logo.length > 0) {
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
       }
 
       // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
-      // Puede ser: full URL, ruta que incluye /uploads/..., o solo nombre de archivo.
-      if (!logoUrl && req.body && req.body.logoStr) {
-        const v = req.body.logoStr;
+      if (!logoUrl && logoStr) {
+        const v = logoStr;
         if (typeof v === 'string' && v.trim()) {
           if (/^https?:\/\//i.test(v)) {
             logoUrl = v.trim();
           } else if (v.includes('/uploads/')) {
             logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
           } else {
-            // asume solo nombre de archivo -> carpeta companies
             logoUrl = `/uploads/companies/${v.trim()}`;
           }
         }
       }
 
-      // Crear empresa
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
@@ -645,85 +651,51 @@ app.post("/registro/empleados-empresa", async (req, res) => {
   }
 });
 
-// Ruta POST exclusiva del Admin de Empresa para registrar empleados
-app.post("/registro/empleados-empresa", async (req, res) => {
-  const rolSolicitante = req.headers["rol"];
-  const empresaId = req.headers["empresa_id"];
-
-  if (rolSolicitante !== "admin_empresa") {
-    return res.status(403).json({ message: "Acceso denegado. Solo administradores de empresa pueden registrar empleados." });
-  }
-
-  const { nombre, email, password } = req.body;
-
-  if (!nombre || !email || !password || !empresaId) {
-    return res.status(400).json({ message: "Faltan datos obligatorios" });
-  }
-
-  try {
-    const contador = await Contador.findByIdAndUpdate(
-      "id_usuario",
-      { $inc: { sequence_value: 1 } },
-      { new: true, upsert: true }
-    );
-
-    const nuevoEmpleado = new Usuario({
-      id_usuario: contador.sequence_value,
-      nombre,
-      email,
-      password,
-      rol: "empleado",
-      empresa_id: parseInt(empresaId)
-    });
-
-    await nuevoEmpleado.save();
-    res.status(201).json({ message: "Empleado registrado exitosamente por Admin de Empresa" });
-  } catch (error) {
-    console.error("Error al registrar empleado:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
-  }
-});
-
-
-// REEMPLAZAR /registro/empresa por esta versión que acepta campos + archivo y loggea lo recibido
+// SINGLE, FINAL /registro/empresa endpoint (acepta campos + archivo)
 app.post(
   "/registro/empresa",
-  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // <- ACEPTA CAMPOS + ARCHIVO
+  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // acepta campos de texto + archivo
   async (req, res) => {
     try {
-      // Ver qué llega realmente
-      console.log("BODY:", req.body);
-      console.log("FILES:", req.files);
+      // Depuración: confirma qué llega desde el frontend
+      console.log("[/registro/empresa] headers:", {
+        'content-type': req.headers['content-type'],
+        origin: req.headers.origin
+      });
+      console.log("[/registro/empresa] body:", req.body);
+      console.log("[/registro/empresa] files:", req.files);
 
-      const { nombre_empresa, email, password, descripcion, telefono } = req.body;
+      const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
 
       if (!nombre_empresa || !email || !password) {
-        return res.status(400).json({ message: "Faltan datos obligatorios" });
+        // devolver datos recibidos ayuda a depurar desde el front
+        return res.status(400).json({
+          message: "Faltan datos obligatorios (nombre_empresa, email, password)",
+          receivedBody: req.body,
+          receivedFiles: req.files || null
+        });
       }
 
-      // Si se subió archivo, lo guardamos
+      // Si se subió archivo, construimos la ruta servida
       let logoUrl = null;
       if (req.files && req.files.logo && req.files.logo.length > 0) {
         logoUrl = `/uploads/companies/${req.files.logo[0].filename}`;
       }
 
       // Si no hay archivo, aceptar un identificador enviado en el body (logoStr)
-      // Puede ser: full URL, ruta que incluye /uploads/..., o solo nombre de archivo.
-      if (!logoUrl && req.body && req.body.logoStr) {
-        const v = req.body.logoStr;
+      if (!logoUrl && logoStr) {
+        const v = logoStr;
         if (typeof v === 'string' && v.trim()) {
           if (/^https?:\/\//i.test(v)) {
             logoUrl = v.trim();
           } else if (v.includes('/uploads/')) {
             logoUrl = v.startsWith('/') ? v.trim() : `/${v.trim()}`;
           } else {
-            // asume solo nombre de archivo -> carpeta companies
             logoUrl = `/uploads/companies/${v.trim()}`;
           }
         }
       }
 
-      // Crear empresa
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
