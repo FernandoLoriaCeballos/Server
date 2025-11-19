@@ -1828,69 +1828,74 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const YOUR_DOMAIN = "http://localhost:5173"; // o el puerto de tu frontend
 
 app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const { items, userId } = req.body;
-    
-    console.log("🛒 Body completo recibido:", req.body);
-    console.log("📦 Items recibidos:", items);
-    console.log("👤 User ID:", userId);
+  try {
+    const { items, userId } = req.body;
+    
+    console.log("🛒 Body completo recibido:", req.body);
+    console.log("📦 Items recibidos:", items);
+    console.log("👤 User ID:", userId);
 
-    // Si items es undefined, crear datos de prueba
-    let line_items;
-    if (!items || items.length === 0) {
-      console.log("⚠️  Usando datos de prueba");
-      line_items = [{
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: "Producto de Prueba",
-            description: "Prueba de Stripe Checkout",
-          },
-          unit_amount: 10000, // $100 MXN
-        },
-        quantity: 1,
-      }];
-    } else {
-      // Usar los items reales del carrito
-      line_items = items.map(item => ({
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: item.nombre || "Producto",
-            description: item.descripcion || `Cantidad: ${item.cantidad}`,
-          },
-          unit_amount: Math.round((item.precio || 100) * 100),
-        },
-        quantity: item.cantidad || 1,
-      }));
-    }
+    // Si items es undefined, crear datos de prueba
+    let line_items;
+    if (!items || items.length === 0) {
+      console.log("⚠️  Usando datos de prueba");
+      line_items = [{
+        price_data: {
+          currency: 'mxn',
+          product_data: {
+            name: "Producto de Prueba",
+            description: "Prueba de Stripe Checkout",
+          },
+          unit_amount: 10000, // $100 MXN
+        },
+        quantity: 1,
+      }];
+    } else {
+      // Usar los items reales del carrito
+      line_items = items.map(item => ({
+        price_data: {
+          currency: 'mxn',
+          product_data: {
+            name: item.nombre || "Producto",
+            description: item.descripcion || `Cantidad: ${item.cantidad}`,
+          },
+          unit_amount: Math.round((item.precio || 100) * 100),
+        },
+        quantity: item.cantidad || 1,
+      }));
+    }
 
-    console.log("📋 Line items finales:", line_items);
+    console.log("📋 Line items finales:", line_items);
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items,
-      mode: 'payment',
-      success_url: `http://localhost:5173/landing`,
-      cancel_url: `http://localhost:5173/landing`,
-    });
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items,
+      mode: 'payment',
+      // 👇 MODIFICACIONES PARA CONTROLAR LA DIVISA/LOCALIZACIÓN
+      currency: 'mxn', // Establece MXN como la moneda principal de la sesión.
+      billing_address_collection: 'required', // Pide la dirección de facturación, lo que ayuda a Stripe a determinar la localización.
+      locale: 'es', // Fuerza el idioma español para el formulario.
+      // 👆 FIN DE MODIFICACIONES
+      success_url: `http://localhost:5173/landing`,
+      cancel_url: `http://localhost:5173/landing`,
+    });
 
-    console.log("✅ Checkout Session creada:", session.id);
-    console.log("🔗 URL de Checkout:", session.url);
-    
-    res.json({
-      url: session.url,
-      sessionId: session.id,
-      message: items ? "Checkout con productos reales" : "Checkout con datos de prueba"
-    });
-    
-  } catch (err) {
-    console.error("❌ Error creando la sesión de Stripe:", err);
-    res.status(500).json({ 
-      error: "Error al crear la sesión de pago.",
-      details: err.message 
-    });
-  }
+    console.log("✅ Checkout Session creada:", session.id);
+    console.log("🔗 URL de Checkout:", session.url);
+    
+    res.json({
+      url: session.url,
+      sessionId: session.id,
+      message: items ? "Checkout con productos reales" : "Checkout con datos de prueba"
+    });
+    
+  } catch (err) {
+    console.error("❌ Error creando la sesión de Stripe:", err);
+    res.status(500).json({ 
+      error: "Error al crear la sesión de pago.",
+      details: err.message 
+    });
+  }
 });
 // ---------------- FIN BLOQUE STRIPE ----------------
 
@@ -1900,8 +1905,8 @@ app.post("/create-checkout-session", async (req, res) => {
 const PLANES_SUSCRIPCION = {
   basica: {
     nombre: "Plan Básico",
-    precio_mensual: 29900, // $299 MXN en centavos
-    stripe_price_id: "price_1STUOOEwPHsvqkshLaPk7pBo", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 299.99, // $299 MXN en centavos
+    stripe_price_id: "price_1SVKLkEwPHsvqkshI6Uh6Wkz", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
     caracteristicas: [
       "Hasta 50 productos",
       "Dashboard básico", 
@@ -1911,8 +1916,8 @@ const PLANES_SUSCRIPCION = {
   },
   premium: {
     nombre: "Plan Profesional",
-    precio_mensual: 59900, // $599 MXN en centavos
-    stripe_price_id: "price_1STUWYEwPHsvqkshopXDPVA1", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 599.99, // $599 MXN en centavos
+    stripe_price_id: "price_1SVKNtEwPHsvqkshrZNBeotj", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
     caracteristicas: [
       "Productos ilimitados",
       "Dashboard avanzado",
@@ -1923,8 +1928,8 @@ const PLANES_SUSCRIPCION = {
   },
   empresarial: {
     nombre: "Plan Empresarial", 
-    precio_mensual: 99900, // $999 MXN en centavos
-    stripe_price_id: "price_1STUXMEwPHsvqksh6us6iHbD", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 999.99, // $999 MXN en centavos
+    stripe_price_id: "price_1SVKOgEwPHsvqkshUtPXATsV", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
     caracteristicas: [
       "Todo lo del Premium",
       "Soporte 24/7",
