@@ -8,6 +8,7 @@ import axios from "axios";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import Stripe from "stripe"; // Importación movida arriba para orden
 
 dotenv.config(); // Siempre al inicio
 console.log("🔑 Stripe Key cargada:", process.env.STRIPE_SECRET_KEY ? "✅ Sí" : "❌ No");
@@ -25,6 +26,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
+// Inicializar Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const YOUR_DOMAIN = "http://localhost:5173"; 
+
 const generarToken = (usuario) => {
   return jwt.sign(usuario, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES || "1h",
@@ -32,8 +37,6 @@ const generarToken = (usuario) => {
 };
 
 app.use("/auth", authRoutes);
-
-// <-- REMOVED this early listener to avoid double listen (was: app.listen(3000,...)) -->
 
 app.use(express.static('dist', {
   setHeaders: (res, path) => {
@@ -52,7 +55,7 @@ const PRODUCT_UPLOADS = path.join(UPLOADS_BASE, "products");
 fs.mkdirSync(COMPANY_UPLOADS, { recursive: true });
 fs.mkdirSync(PRODUCT_UPLOADS, { recursive: true });
 
-// Servir archivos estáticos (para poder ver las imágenes desde el navegador)
+// Servir archivos estáticos
 app.use("/uploads", express.static(UPLOADS_BASE));
 
 // ===== FUNCIONES AUXILIARES =====
@@ -83,15 +86,12 @@ app.post(
         return res.status(400).json({ message: "Faltan datos obligatorios (nombre_empresa, email, password)" });
       }
 
-      // Determinar nombre de archivo (solo filename)
       let logoFilename = null;
 
       if (req.files && req.files.logo && req.files.logo.length > 0) {
-        // Si se subió archivo, guardamos solo el filename
         logoFilename = req.files.logo[0].filename;
       } else if (logoStr && typeof logoStr === "string" && logoStr.trim()) {
         const v = logoStr.trim();
-        // Si es URL o ruta que incluye /uploads/, extraer basename
         if (/^https?:\/\//i.test(v)) {
           try {
             logoFilename = path.basename(new URL(v).pathname);
@@ -101,22 +101,19 @@ app.post(
         } else if (v.includes("/uploads/")) {
           logoFilename = path.basename(v);
         } else {
-          // asumimos que el usuario proporcionó solo el nombre del archivo
           logoFilename = v;
         }
       }
 
-      // Crear empresa guardando solo el nombre del archivo en el campo 'logo'
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
         password,
         descripcion,
         telefono,
-        logo: logoFilename, // solo filename
+        logo: logoFilename, 
       });
 
-      // Construir URL pública para vista previa si hay filename
       const logoUrlPublic = logoFilename
         ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
         : null;
@@ -169,22 +166,12 @@ app.post("/upload/product-photo/:id_producto?", uploadProduct.single("foto"), as
   }
 });
 
-// ===== RUTA 404 PARA /upload =====
 app.all("/upload/*", (req, res) => {
   res.status(404).json({ message: "Upload endpoint not found" });
 });
 
-// Conexión a la base de datos MongoDB
-// Usa la variable de entorno si está; si no, usa un fallback local para desarrollo.
+// Conexión a MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/proyectitos_dev";
-
-if (!process.env.MONGODB_URI) {
-  console.warn(
-    "WARN: MONGODB_URI no está definida. Se usará el fallback local:",
-    MONGODB_URI,
-    "\nAsegúrate de configurar la variable de entorno MONGODB_URI para producción."
-  );
-}
 
 mongoose
   .connect(MONGODB_URI, {
@@ -196,15 +183,11 @@ mongoose
   })
   .catch((error) => {
     console.error("Error de conexión a MongoDB:", error.message || error);
-    // Mensaje adicional que ayuda a diagnosticar cuando la URI no está definida o es inválida
-    if (!process.env.MONGODB_URI) {
-      console.error(
-        "Nota: MONGODB_URI no estaba definida. Define MONGODB_URI en tu .env o en la configuración del hosting."
-      );
-    }
   });
 
-// Define el esquema del modelo para Usuarios
+// --- SCHEMAS Y MODELOS ---
+
+// 1. MODIFICACIÓN: Agregar trial_end al usuario
 const usuarioSchema = new mongoose.Schema({
   id_usuario: Number,
   nombre: String,
@@ -215,17 +198,15 @@ const usuarioSchema = new mongoose.Schema({
     enum: ["superadmin", "admin_empresa", "empleado", "usuario"],
     default: "usuario"
   },
-  id_empresa: Number, // <-- nuevo campo
-  fecha_reg: {
-    type: Date,
-    default: Date.now
-  }
+  id_empresa: Number, 
+  fecha_reg: { type: Date, default: Date.now },
+  // NUEVO CAMPO PARA PRUEBA GRATIS
+  trial_end: { type: Date } 
 });
 
-// Esquema y modelo de Empresa
 const empresaSchema = new mongoose.Schema({
   id_empresa: Number,
-  nombre_empresa: String,  // nombre cambiado a nombre_empresa si así lo usas en el frontend
+  nombre_empresa: String, 
   email: String,
   password: String,
   descripcion: String,
@@ -235,26 +216,22 @@ const empresaSchema = new mongoose.Schema({
 });
 const Empresa = mongoose.model("Empresa", empresaSchema, "empresas");
 
-// Esquema y modelo del contador para empresas
 const contadorEmpresaSchema = new mongoose.Schema({
-  _id: { type: String, default: "id_empresa" }, // O puedes dejarlo dinámico
+  _id: { type: String, default: "id_empresa" }, 
   sequence_value: { type: Number, default: 0 }
 });
-
 const ContadorEmpresa = mongoose.model("ContadorEmpresa", contadorEmpresaSchema, "contadorEmpresa");
 
-// Esquema y modelo de Empleado
 const empleadoSchema = new mongoose.Schema({
   id_empleado: Number,
   nombre: String,
   email: String,
   password: String,
-  id_empresa: Number, // Relación con Empresa
+  id_empresa: Number, 
   fecha_reg: { type: Date, default: Date.now }
 });
 const Empleado = mongoose.model("Empleado", empleadoSchema, "empleados");
 
-// Define el esquema del modelo para Productos (ACTUALIZADO)
 const productoSchema = new mongoose.Schema({
   id_producto: Number,
   nombre: String,
@@ -267,24 +244,18 @@ const productoSchema = new mongoose.Schema({
   foto: String,
   id_empresa: { 
     type: Number,
-    required: true // Hacemos que sea obligatorio
+    required: true 
   },
   fecha_reg: { type: Date, default: Date.now },
 });
-
-// Define el modelo para Productos
 const Producto = mongoose.model("Producto", productoSchema, "productos");
 
-// Define el esquema del modelo para el contador de productos
 const contadorProductoSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de productos
 const ContadorProducto = mongoose.model("ContadorProducto", contadorProductoSchema, "contadorProductos");
 
-// Define el esquema del modelo para Ofertas (NUEVO)
 const ofertaSchema = new mongoose.Schema({
   id_oferta: Number,
   id_producto: Number,
@@ -294,22 +265,16 @@ const ofertaSchema = new mongoose.Schema({
   fecha_fin: Date,
   estado: { type: Boolean, default: true }
 });
-
-// Define el modelo para Ofertas
 const Oferta = mongoose.model("Oferta", ofertaSchema, "ofertas");
 
-// Define el esquema del modelo para el contador de ofertas
 const contadorOfertaSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de ofertas
 const ContadorOferta = mongoose.model("ContadorOferta", contadorOfertaSchema, "contadorOfertas");
 
-// Rutas de Productos
+// --- RUTAS DE PRODUCTOS ---
 
-// Ruta POST para agregar un nuevo producto
 app.post("/productos", uploadProduct.single('foto'), async (req, res) => {
   const { nombre, descripcion, precio, stock, categoria, id_empresa } = req.body;
   const foto = req.file ? req.file.filename : null;
@@ -334,14 +299,14 @@ app.post("/productos", uploadProduct.single('foto'), async (req, res) => {
       en_oferta: false,
       stock,
       categoria,
-      foto, // Guardamos solo el nombre del archivo
+      foto, 
       id_empresa: parseInt(id_empresa)
     });
 
     await nuevoProducto.save();
     res.status(201).json({ 
       message: "Producto agregado exitosamente",
-      foto: foto ? `/uploads/${foto}` : null // Devolvemos la URL completa
+      foto: foto ? `/uploads/${foto}` : null 
     });
   } catch (error) {
     console.error(error);
@@ -349,17 +314,13 @@ app.post("/productos", uploadProduct.single('foto'), async (req, res) => {
   }
 });
 
-// Ruta GET para obtener todos los productos
 app.get("/productos", async (req, res) => {
   try {
-    const { id_empresa } = req.query; // Obtener id_empresa de los query params
+    const { id_empresa } = req.query; 
     let query = {};
-    
-    // Si se proporciona id_empresa, filtrar por empresa
     if (id_empresa) {
       query.id_empresa = parseInt(id_empresa);
     }
-    
     const productos = await Producto.find(query);
     res.status(200).json(productos);
   } catch (error) {
@@ -368,7 +329,6 @@ app.get("/productos", async (req, res) => {
   }
 });
 
-// Ruta PUT para actualizar un producto
 app.put("/productos/:id", async (req, res) => {
   const { id } = req.params;
   const { nombre, descripcion, precio, stock, categoria, foto } = req.body;
@@ -385,7 +345,6 @@ app.put("/productos/:id", async (req, res) => {
   }
 });
 
-// Ruta DELETE para eliminar un producto
 app.delete("/productos/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -397,26 +356,22 @@ app.delete("/productos/:id", async (req, res) => {
   }
 });
 
-// Rutas de Ofertas (NUEVO)
+// --- RUTAS DE OFERTAS ---
 
-// Ruta POST para crear una nueva oferta
 app.post("/ofertas", async (req, res) => {
   const { id_producto, descuento, precio_oferta, fecha_inicio, fecha_fin, estado } = req.body;
   try {
-    // Primero verificar si el producto existe
     const producto = await Producto.findOne({ id_producto });
     if (!producto) {
       return res.status(404).json({ message: "Producto no encontrado" });
     }
 
-    // Crear el contador para la oferta
     const contador = await ContadorOferta.findByIdAndUpdate(
       "id_oferta",
       { $inc: { sequence_value: 1 } },
       { new: true, upsert: true }
     );
 
-    // Crear la nueva oferta
     const nuevaOferta = new Oferta({
       id_oferta: contador.sequence_value,
       id_producto,
@@ -429,12 +384,9 @@ app.post("/ofertas", async (req, res) => {
 
     await nuevaOferta.save();
 
-    // Actualizar el estado de oferta del producto
     await Producto.findOneAndUpdate(
       { id_producto },
-      {
-        en_oferta: true
-      }
+      { en_oferta: true }
     );
 
     res.status(201).json({ message: "Oferta creada exitosamente" });
@@ -444,7 +396,6 @@ app.post("/ofertas", async (req, res) => {
   }
 });
 
-// Ruta GET para obtener todas las ofertas
 app.get("/ofertas", async (req, res) => {
   try {
     const ofertas = await Oferta.find();
@@ -462,7 +413,6 @@ app.get("/ofertas", async (req, res) => {
   }
 });
 
-// Ruta PUT para actualizar una oferta
 app.put("/ofertas/:id", async (req, res) => {
   const { id } = req.params;
   const { id_producto, descuento, precio_oferta, fecha_inicio, fecha_fin, estado } = req.body;
@@ -480,12 +430,9 @@ app.put("/ofertas/:id", async (req, res) => {
       { new: true }
     );
 
-    // Actualizar el estado de oferta del producto
     await Producto.findOneAndUpdate(
       { id_producto },
-      {
-        en_oferta: estado
-      }
+      { en_oferta: estado }
     );
 
     res.status(200).json(ofertaActualizada);
@@ -495,17 +442,15 @@ app.put("/ofertas/:id", async (req, res) => {
   }
 });
 
-// Ruta DELETE para eliminar una oferta
 app.delete("/ofertas/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const oferta = await Oferta.findById(id);
     if (oferta) {
-      // Restaurar el precio original del producto
       await Producto.findOneAndUpdate(
         { id_producto: oferta.id_producto },
         {
-          precio: oferta.precio_original, // Cambio aquí
+          precio: oferta.precio_original, 
           precio_original: null,
           en_oferta: false
         }
@@ -520,7 +465,6 @@ app.delete("/ofertas/:id", async (req, res) => {
   }
 });
 
-// Función para verificar ofertas vencidas
 const verificarOfertasVencidas = async () => {
   try {
     const ofertasVencidas = await Oferta.find({
@@ -529,13 +473,11 @@ const verificarOfertasVencidas = async () => {
     });
 
     for (const oferta of ofertasVencidas) {
-      // Desactivar la oferta
       await Oferta.findByIdAndUpdate(
         oferta._id,
         { estado: false }
       );
 
-      // Restaurar el precio original del producto
       const producto = await Producto.findOne({ id_producto: oferta.id_producto });
       if (producto && producto.precio_original) {
         await Producto.findOneAndUpdate(
@@ -552,23 +494,18 @@ const verificarOfertasVencidas = async () => {
     console.error('Error al verificar ofertas vencidas:', error);
   }
 };
+setInterval(verificarOfertasVencidas, 3600000); 
 
-// Ejecutar la verificación de ofertas vencidas cada hora
-setInterval(verificarOfertasVencidas, 3600000); // 3600000 ms = 1 hora
-
-// Define el modelo para Usuarios
 const Usuario = mongoose.model("Usuario", usuarioSchema, "usuarios");
-
-// Define el esquema del modelo para el contador de usuarios
 const contadorSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de usuarios
 const Contador = mongoose.model("Contador", contadorSchema, "contadores");
 
-// Ruta POST para agregar un nuevo usuario
+// --- RUTAS DE USUARIOS Y AUTH ---
+
+// 2. MODIFICACIÓN: Asignar 15 días de prueba al registrarse
 app.post("/registro", async (req, res) => {
   const { nombre, email, password } = req.body;
   try {
@@ -578,23 +515,27 @@ app.post("/registro", async (req, res) => {
       { new: true, upsert: true }
     );
 
+    // Calcular fecha de fin de prueba (Hoy + 15 días)
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 15);
+
     const nuevoUsuario = new Usuario({
       id_usuario: contador.sequence_value,
       nombre,
       email,
       password,
-      rol: "usuario", // 👈 SE AÑADE AUTOMÁTICAMENTE
+      rol: "usuario", 
+      trial_end: trialEndDate // Guardar fecha de fin de prueba
     });
 
     await nuevoUsuario.save();
-    res.status(201).json({ message: "Usuario registrado exitosamente" });
+    res.status(201).json({ message: "Usuario registrado exitosamente con 15 días de prueba" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
 
-// Ruta POST exclusiva del SuperAdmin para registrar usuarios con cualquier rol
 app.post("/registro/usuarios-superadmin", async (req, res) => {
   const { nombre, email, password, rol, id_empresa } = req.body;
   const rolSolicitante = req.headers["rol"];
@@ -621,7 +562,6 @@ app.post("/registro/usuarios-superadmin", async (req, res) => {
       email,
       password,
       rol,
-      // Agregar solo si aplica
       ...(rol === "admin_empresa" || rol === "empleado" ? { id_empresa: parseInt(id_empresa) } : {})
     });
 
@@ -633,10 +573,9 @@ app.post("/registro/usuarios-superadmin", async (req, res) => {
   }
 });
 
-
 app.post("/registro/empleados-empresa", async (req, res) => {
   const rolSolicitante = req.headers["rol"];
-  const empresaId = req.headers["empresa_id"]; // 👈 Asegúrate de enviarlo desde el frontend
+  const empresaId = req.headers["empresa_id"]; 
 
   if (rolSolicitante !== "admin_empresa") {
     return res.status(403).json({ message: "Acceso denegado. Solo administradores de empresa pueden registrar empleados." });
@@ -667,11 +606,10 @@ app.post("/registro/empleados-empresa", async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
-
-// SINGLE /registro/empresa endpoint: guarda SOLO el nombre del archivo en la BD
+ 
 app.post(
   "/registro/empresa",
-  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), // acepta archivo + otros campos
+  uploadCompany.fields([{ name: "logo", maxCount: 1 }]), 
   async (req, res) => {
     try {
       const { nombre_empresa, email, password, descripcion, telefono, logoStr } = req.body;
@@ -682,15 +620,12 @@ app.post(
         });
       }
 
-      // Determinar el nombre de archivo que se guardará
       let logoFilename = null;
 
       if (req.files && req.files.logo && req.files.logo.length > 0) {
-        // Si se subió archivo, usar el filename generado por multer
         logoFilename = req.files.logo[0].filename;
       } else if (logoStr && typeof logoStr === "string" && logoStr.trim()) {
         const v = logoStr.trim();
-        // Extraer solo el basename si es URL o contiene /uploads/
         if (/^https?:\/\//i.test(v)) {
           try {
             logoFilename = path.basename(new URL(v).pathname);
@@ -700,21 +635,19 @@ app.post(
         } else if (v.includes("/uploads/")) {
           logoFilename = path.basename(v);
         } else {
-          logoFilename = v; // nombre proporcionado directamente
+          logoFilename = v; 
         }
       }
 
-      // Guardar empresa en la base de datos
       const nuevaEmpresa = await Empresa.create({
         nombre_empresa,
         email,
         password,
         descripcion,
         telefono,
-        logo: logoFilename, // solo el nombre del archivo
+        logo: logoFilename, 
       });
 
-      // Construir URL pública para vista previa
       const logoUrlPublic = logoFilename
         ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
         : null;
@@ -723,7 +656,7 @@ app.post(
         message: "Empresa registrada correctamente",
         empresa: nuevaEmpresa,
         logoFilename,
-        logoUrl: logoUrlPublic, // para que el frontend pueda mostrar preview
+        logoUrl: logoUrlPublic, 
       });
     } catch (error) {
       console.error("Error registrando empresa:", error);
@@ -732,7 +665,6 @@ app.post(
   }
 );
 
-// ✅ Ruta opcional /empresas (simplificada)
 app.post("/empresas", uploadCompany.single("logo"), async (req, res) => {
   try {
     const { nombre_empresa, email, password, descripcion, telefono } = req.body;
@@ -743,7 +675,6 @@ app.post("/empresas", uploadCompany.single("logo"), async (req, res) => {
       { new: true, upsert: true }
     );
 
-    // Guardar solo el filename en logo
     const logoFilename = req.file ? req.file.filename : null;
 
     const nuevaEmpresa = new Empresa({
@@ -753,13 +684,12 @@ app.post("/empresas", uploadCompany.single("logo"), async (req, res) => {
       password,
       descripcion,
       telefono,
-      logo: logoFilename, // solo filename
+      logo: logoFilename, 
       fecha_creacion: new Date(),
     });
 
     await nuevaEmpresa.save();
 
-    // Construir URL pública para frontend
     const logoUrlPublic = logoFilename
       ? `${req.protocol}://${req.get("host")}/uploads/companies/${logoFilename}`
       : null;
@@ -776,10 +706,8 @@ app.post("/empresas", uploadCompany.single("logo"), async (req, res) => {
   }
 });
 
-// ✅ Servir archivos estáticos (necesario para mostrar imagen)
 app.use("/uploads", express.static(path.join("uploads")));
 
-// Ruta de inicio de sesión Usuarios (Login)
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -796,9 +724,8 @@ app.post("/login", async (req, res) => {
       message: `¡Bienvenido ${usuario.nombre}!`
     };
 
-    // 👉 Agregar empresa_id si aplica
     if (usuario.rol === "admin_empresa" || usuario.rol === "empleado") {
-      response.empresa_id = usuario.id_empresa;  // Usa el campo correcto
+      response.empresa_id = usuario.id_empresa;  
     }
 
     res.status(200).json(response);
@@ -808,7 +735,6 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Ruta de inicio de sesión para Empresa
 app.post("/login/empresa", async (req, res) => {
   try {
     const { nombre_empresa, password } = req.body;
@@ -830,7 +756,6 @@ app.post("/login/empresa", async (req, res) => {
   }
 });
 
-// Ruta de inicio de sesión para Empleado
 app.post("/login/empleado", async (req, res) => {
   try {
     const { email, password, id_empresa } = req.body;
@@ -841,7 +766,6 @@ app.post("/login/empleado", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    // ✅ Corregido: comparar contra id_empresa correctamente
     if (id_empresa && empleado.id_empresa !== parseInt(id_empresa)) {
       return res.status(403).json({ message: "Este empleado no pertenece a la empresa logueada." });
     }
@@ -865,8 +789,6 @@ app.post("/login/empleado", async (req, res) => {
   }
 });
 
-
-// Nueva ruta para obtener todos los usuarios
 app.get("/usuarios", async (req, res) => {
   try {
     const usuarios = await Usuario.find();
@@ -877,7 +799,6 @@ app.get("/usuarios", async (req, res) => {
   }
 });
 
-// Obtener todas las empresas
 app.get("/empresas", async (req, res) => {
   try {
     const empresas = await Empresa.find();
@@ -888,12 +809,10 @@ app.get("/empresas", async (req, res) => {
   }
 });
 
-// Agregar empresa (actualizada para usar contador autoincremental)
 app.post("/empresas", async (req, res) => {
   try {
     const { nombre_empresa, email, password, descripcion, telefono, logo } = req.body;
 
-    // Obtener el siguiente ID autoincremental usando el contador
     const contador = await ContadorEmpresa.findByIdAndUpdate(
       "id_empresa",
       { $inc: { sequence_value: 1 } },
@@ -919,7 +838,6 @@ app.post("/empresas", async (req, res) => {
   }
 });
 
-// Actualizar empresa (sin modificar id_empresa)
 app.put("/empresas/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -942,7 +860,6 @@ app.put("/empresas/:id", async (req, res) => {
   }
 });
 
-// Eliminar empresa
 app.delete("/empresas/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -959,17 +876,14 @@ app.delete("/empresas/:id", async (req, res) => {
   }
 });
 
-//Nueva ruta para obtener los empleados de una empresa
 app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   const { empresa_id } = req.params;
 
   try {
     const empresaIdNum = parseInt(empresa_id);
 
-    // Empleados desde la colección empleados
     const empleadosDirectos = await Empleado.find({ id_empresa: empresaIdNum });
 
-    // Usuarios con rol 'empleado' o 'admin_empresa' y empresa asignada
     const empleadosUsuarios = await Usuario.find({
       rol: { $in: ["empleado", "admin_empresa"] },
       id_empresa: empresaIdNum
@@ -984,7 +898,6 @@ app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   }
 });
 
-// Ruta para obtener todos los usuarios y empleados con nombre de empresa
 app.get("/todos-usuarios-empleados", async (req, res) => {
   try {
     const [usuarios, empleados, empresas] = await Promise.all([
@@ -993,13 +906,11 @@ app.get("/todos-usuarios-empleados", async (req, res) => {
       Empresa.find()
     ]);
 
-    // Mapa de empresas por ID
     const empresaMap = {};
     empresas.forEach(e => {
       empresaMap[e.id_empresa] = e.nombre_empresa;
     });
 
-    // Unificamos formato de datos
     const usuariosNormalizados = usuarios.map(u => ({
       ...u._doc,
       tipo: "usuario",
@@ -1021,14 +932,11 @@ app.get("/todos-usuarios-empleados", async (req, res) => {
   }
 });
 
-
-// Nueva ruta para actualizar un usuario (incluye rol y empresa correctamente)
 app.put("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
   const { nombre, email, password, rol, empresa_id } = req.body;
 
   try {
-    // Preparamos los campos a actualizar
     const updateFields = {
       nombre,
       email,
@@ -1036,11 +944,9 @@ app.put("/usuarios/:id", async (req, res) => {
       rol,
     };
 
-    // Si el rol es empleado o admin_empresa, asignamos id_empresa
     if (rol === "empleado" || rol === "admin_empresa") {
       updateFields.id_empresa = empresa_id ? parseInt(empresa_id) : null;
     } else {
-      // Si no, eliminamos la asignación de empresa
       updateFields.id_empresa = null;
     }
 
@@ -1057,8 +963,6 @@ app.put("/usuarios/:id", async (req, res) => {
   }
 });
 
-
-// Nueva ruta para eliminar un usuario
 app.delete("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -1070,7 +974,8 @@ app.delete("/usuarios/:id", async (req, res) => {
   }
 });
 
-// Define el esquema del modelo para Reseñas
+// --- RESEÑAS ---
+
 const resenaSchema = new mongoose.Schema({
   id_resena: Number,
   id_producto: Number,
@@ -1079,24 +984,17 @@ const resenaSchema = new mongoose.Schema({
   comentario: String,
   fecha: { type: Date, default: Date.now },
 });
-
-// Define el modelo para Reseñas
 const Resena = mongoose.model("Resena", resenaSchema, "resenas");
 
-// Define el esquema del modelo para el contador de reseñas
 const contadorResenaSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de reseñas
 const ContadorResena = mongoose.model("ContadorResena", contadorResenaSchema, "contadorResenas");
 
-// Ruta POST para agregar una nueva reseña
 app.post("/resenas", async (req, res) => {
   const { id_producto, id_usuario, calificacion, comentario, fecha } = req.body;
 
-  // Validar si se debe insertar la reseña
   if (!calificacion || !comentario) {
     res.status(400).json({ message: "Calificación y comentario son campos requeridos para la reseña." });
     return;
@@ -1123,7 +1021,6 @@ app.post("/resenas", async (req, res) => {
   }
 });
 
-// Ruta GET para obtener todas las reseñas
 app.get("/resenas", async (req, res) => {
   try {
     const resenas = await Resena.find();
@@ -1134,7 +1031,6 @@ app.get("/resenas", async (req, res) => {
   }
 });
 
-// Ruta PUT para actualizar una reseña
 app.put("/resenas/:id", async (req, res) => {
   const { id } = req.params;
   const { id_producto, id_usuario, calificacion, comentario, fecha } = req.body;
@@ -1151,7 +1047,6 @@ app.put("/resenas/:id", async (req, res) => {
   }
 });
 
-// Ruta DELETE para eliminar una reseña
 app.delete("/resenas/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -1163,29 +1058,25 @@ app.delete("/resenas/:id", async (req, res) => {
   }
 });
 
-// Define el esquema del modelo para Recibos
+// --- RECIBOS Y CARRITOS ---
+
 const reciboSchema = new mongoose.Schema({
   id_recibo: Number,
   id_compra: Number,
   id_usuario: Number,
+  id_empresa: Number,
   fecha_emi: { type: Date, default: Date.now },
   detalle: String,
   precio_total: Number,
 });
-
-// Define el modelo para Recibos
 const Recibo = mongoose.model("Recibo", reciboSchema, "recibos");
 
-// Define el esquema del modelo para el contador de recibos
 const contadorReciboSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de recibos
 const ContadorRecibo = mongoose.model("ContadorRecibo", contadorReciboSchema, "contadorRecibos");
 
-//RUTA GET OBTENER TODOS LOS RECIBOS
 app.get("/recibos", async (req, res) => {
   try {
     const recibos = await Recibo.find();
@@ -1203,7 +1094,6 @@ app.get("/recibos", async (req, res) => {
   }
 });
 
-//RUTA GET DE OBTENER un recibo por ID
 app.get("/recibos/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -1219,9 +1109,23 @@ app.get("/recibos/:id", async (req, res) => {
   }
 });
 
-// Ruta POST para crear un nuevo recibo
+app.delete("/recibos/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await Recibo.findOneAndDelete({ id_recibo: id });
+    res.status(200).json({ message: "Recibo eliminado exitosamente" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+});
+
+// ====================================================================
+// RUTA POST PARA PAGOS DIRECTOS (PayPal / Oxxo / Efectivo) - BLINDADA
+// ====================================================================
 app.post("/recibos", async (req, res) => {
   const { id_usuario, productos, cupon_aplicado, total } = req.body;
+  console.log("🔵 Iniciando proceso de compra directa (PayPal)...");
 
   try {
     const contador = await ContadorRecibo.findByIdAndUpdate(
@@ -1250,7 +1154,27 @@ app.post("/recibos", async (req, res) => {
 
     await nuevoRecibo.save();
 
-    // Vaciar el carrito después de la compra
+    // --- BLOQUE DE RESTA DE STOCK BLINDADO ---
+    console.log("📉 Actualizando inventario...");
+    for (const item of productos) {
+      // Forzamos conversión a número para evitar errores de tipo
+      const idProd = parseInt(item.id_producto);
+      const cant = parseInt(item.cantidad);
+
+      const resultado = await Producto.findOneAndUpdate(
+        { id_producto: idProd }, 
+        { $inc: { stock: -cant } }, // Restamos
+        { new: true } // Para ver el resultado actualizado
+      );
+
+      if (resultado) {
+        console.log(`✅ Producto ID ${idProd}: Stock bajó a ${resultado.stock}`);
+      } else {
+        console.log(`⚠️ Producto ID ${idProd} NO ENCONTRADO en la BD.`);
+      }
+    }
+    // ------------------------------------------
+
     await Carrito.findOneAndUpdate(
       { id_usuario },
       { $set: { productos: [], cupon_aplicado: null } }
@@ -1258,24 +1182,13 @@ app.post("/recibos", async (req, res) => {
 
     res.status(201).json({ message: "Recibo agregado exitosamente" });
   } catch (error) {
-    console.error(error);
+    console.error("❌ Error en /recibos:", error);
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
 
-//RUTA ELIMINAR RECIBO
-app.delete("/recibos/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    await Recibo.findOneAndDelete({ id_recibo: id });
-    res.status(200).json({ message: "Recibo eliminado exitosamente" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error en el servidor" });
-  }
-});
+// --- CATALOGO ---
 
-// Esquema del catálogo
 const catalogoSchema = new mongoose.Schema({
   id_catalogo: Number,
   nombre: String,
@@ -1284,13 +1197,11 @@ const catalogoSchema = new mongoose.Schema({
   productos: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Producto' }],
 });
 
-// Middleware para actualizar la fecha antes de guardar
 catalogoSchema.pre('save', function (next) {
   this.fecha_act = Date.now();
   next();
 });
 
-// Middleware para actualizar la fecha antes de actualizar
 catalogoSchema.pre('findOneAndUpdate', function (next) {
   this._update.fecha_act = Date.now();
   next();
@@ -1298,7 +1209,6 @@ catalogoSchema.pre('findOneAndUpdate', function (next) {
 
 const Catalogo = mongoose.model('Catalogo', catalogoSchema, 'catalogo');
 
-// Esquema del contador de catálogo
 const contadorCatalogoSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
@@ -1306,7 +1216,6 @@ const contadorCatalogoSchema = new mongoose.Schema({
 
 const ContadorCatalogo = mongoose.model('ContadorCatalogo', contadorCatalogoSchema, 'contadores_catalogo');
 
-// Ruta para crear un nuevo catálogo
 app.post('/catalogo', async (req, res) => {
   const { nombre, descripcion, productos } = req.body;
   try {
@@ -1330,7 +1239,6 @@ app.post('/catalogo', async (req, res) => {
   }
 });
 
-// Ruta para obtener todos los catálogos
 app.get('/catalogo', async (req, res) => {
   try {
     const catalogos = await Catalogo.find().populate('productos', 'nombre');
@@ -1341,7 +1249,6 @@ app.get('/catalogo', async (req, res) => {
   }
 });
 
-// Ruta para actualizar un catálogo
 app.put('/catalogo/:id', async (req, res) => {
   const { id } = req.params;
   const { nombre, descripcion, productos } = req.body;
@@ -1358,7 +1265,6 @@ app.put('/catalogo/:id', async (req, res) => {
   }
 });
 
-// Ruta para eliminar un catálogo
 app.delete('/catalogo/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -1370,7 +1276,8 @@ app.delete('/catalogo/:id', async (req, res) => {
   }
 });
 
-// Define el esquema del modelo para Carritos
+// --- CARRITOS ---
+
 const carritoSchema = new mongoose.Schema({
   id_usuario: Number,
   productos: [
@@ -1380,7 +1287,7 @@ const carritoSchema = new mongoose.Schema({
       nombre: String,
       precio: Number,
       foto: String,
-      esPromocion: Boolean  // Añadido el campo esPromocion
+      esPromocion: Boolean
     },
   ],
   cupon_aplicado: {
@@ -1388,11 +1295,8 @@ const carritoSchema = new mongoose.Schema({
     descuento: Number
   }
 });
-
-// Define el modelo para Carritos
 const Carrito = mongoose.model("Carrito", carritoSchema, "carritos");
 
-// Ruta GET para obtener el carrito de un usuario
 app.get("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
   try {
@@ -1412,7 +1316,6 @@ app.get("/carrito/:id_usuario", async (req, res) => {
   }
 });
 
-// Ruta PUT para actualizar todo el carrito
 app.put("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
   const { productos, cupon_aplicado } = req.body;
@@ -1436,7 +1339,6 @@ app.put("/carrito/:id_usuario", async (req, res) => {
   }
 });
 
-// Ruta POST para agregar un producto al carrito
 app.post("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
   const { id_producto, cantidad, nombre, precio, foto, esPromocion } = req.body;
@@ -1445,7 +1347,6 @@ app.post("/carrito/:id_usuario", async (req, res) => {
     const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
 
     if (!carrito) {
-      // Si el carrito no existe, créalo con el primer producto
       const nuevoCarrito = new Carrito({
         id_usuario: parseInt(id_usuario),
         productos: [{
@@ -1454,7 +1355,7 @@ app.post("/carrito/:id_usuario", async (req, res) => {
           nombre,
           precio,
           foto,
-          esPromocion // Agregar la propiedad esPromocion
+          esPromocion 
         }],
         cupon_aplicado: null
       });
@@ -1462,21 +1363,18 @@ app.post("/carrito/:id_usuario", async (req, res) => {
       return res.status(201).json(nuevoCarrito);
     }
 
-    // Buscar si el producto ya existe en el carrito
     const productoExistente = carrito.productos.find(p => p.id_producto === id_producto);
 
     if (productoExistente) {
-      // Actualizar la cantidad si el producto ya existe
       productoExistente.cantidad += cantidad;
     } else {
-      // Agregar el nuevo producto si no existe
       carrito.productos.push({
         id_producto,
         cantidad,
         nombre,
         precio,
         foto,
-        esPromocion // Agregar la propiedad esPromocion
+        esPromocion 
       });
     }
 
@@ -1488,7 +1386,6 @@ app.post("/carrito/:id_usuario", async (req, res) => {
   }
 });
 
-// Ruta DELETE para eliminar un producto del carrito
 app.delete("/carrito/:id_usuario/:id_producto", async (req, res) => {
   const { id_usuario, id_producto } = req.params;
 
@@ -1509,7 +1406,6 @@ app.delete("/carrito/:id_usuario/:id_producto", async (req, res) => {
   }
 });
 
-// Ruta PUT para actualizar la cantidad de un producto específico
 app.put("/carrito/:id_usuario/:id_producto", async (req, res) => {
   const { id_usuario, id_producto } = req.params;
   const { cantidad } = req.body;
@@ -1537,7 +1433,6 @@ app.put("/carrito/:id_usuario/:id_producto", async (req, res) => {
   }
 });
 
-// Ruta para vaciar el carrito
 app.delete("/carrito/:id_usuario", async (req, res) => {
   const { id_usuario } = req.params;
 
@@ -1559,29 +1454,22 @@ app.delete("/carrito/:id_usuario", async (req, res) => {
   }
 });
 
-//CUPONES
+// --- CUPONES ---
 
-// Define el esquema del modelo para Cupones
 const cuponSchema = new mongoose.Schema({
   id_cupon: Number,
   codigo: String,
   descuento: Number,
   fecha_expiracion: Date,
 });
-
-// Define el modelo para Cupones
 const Cupon = mongoose.model("Cupon", cuponSchema, "cupones");
 
-// Define el esquema del modelo para el contador de cupones
 const contadorCuponSchema = new mongoose.Schema({
   _id: String,
   sequence_value: { type: Number, default: 0 }
 });
-
-// Define el modelo para el contador de cupones
 const ContadorCupon = mongoose.model("ContadorCupon", contadorCuponSchema, "contadorCupones");
 
-// Obtener todos los cupones
 app.get("/cupones", async (req, res) => {
   try {
     const cupones = await Cupon.find();
@@ -1592,7 +1480,6 @@ app.get("/cupones", async (req, res) => {
   }
 });
 
-// Ruta POST para aplicar un cupón
 app.post("/carrito/:id_usuario/aplicar-cupon", async (req, res) => {
   const { id_usuario } = req.params;
   const { codigo } = req.body;
@@ -1617,7 +1504,6 @@ app.post("/carrito/:id_usuario/aplicar-cupon", async (req, res) => {
   }
 });
 
-// Crear un nuevo cupón
 app.post("/cupones", async (req, res) => {
   const { codigo, descuento, fecha_expiracion } = req.body;
   try {
@@ -1640,7 +1526,6 @@ app.post("/cupones", async (req, res) => {
   }
 });
 
-// Actualizar un cupón existente
 app.put("/cupones/:id", async (req, res) => {
   const { id } = req.params;
   const { codigo, descuento, fecha_expiracion } = req.body;
@@ -1657,7 +1542,6 @@ app.put("/cupones/:id", async (req, res) => {
   }
 });
 
-// Eliminar un cupón
 app.delete("/cupones/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -1669,14 +1553,14 @@ app.delete("/cupones/:id", async (req, res) => {
   }
 });
 
-// Ruta para intercambio de code por access_token y datos de usuario con Microsoft
+// --- AUTH EXTERNO (Microsoft, Google, OXXO) ---
+
 app.post('/auth/microsoft/token', async (req, res) => {
   const { code, redirectUri } = req.body;
   if (!code || !redirectUri) {
     return res.status(400).json({ message: "code y redirectUri son requeridos" });
   }
   try {
-    // 1. Intercambiar code por access_token
     const tokenParams = new URLSearchParams();
     tokenParams.append('client_id', process.env.MICROSOFT_CLIENT_ID);
     tokenParams.append('scope', 'User.Read');
@@ -1692,7 +1576,6 @@ app.post('/auth/microsoft/token', async (req, res) => {
     );
     const { access_token } = tokenResponse.data;
 
-    // 2. Obtener datos del usuario
     const userResponse = await axios.get(
       'https://graph.microsoft.com/v1.0/me',
       { headers: { Authorization: `Bearer ${access_token}` } }
@@ -1716,7 +1599,6 @@ app.post("/auth/google/token", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Intercambiar code por access_token
     const params = new URLSearchParams();
     params.append("code", code);
     params.append("client_id", process.env.GOOGLE_CLIENT_ID);
@@ -1732,7 +1614,6 @@ app.post("/auth/google/token", async (req, res) => {
 
     const { access_token } = tokenResponse.data;
 
-    // 2️⃣ Obtener los datos del usuario desde Google
     const userResponse = await axios.get(
       "https://www.googleapis.com/oauth2/v2/userinfo",
       { headers: { Authorization: `Bearer ${access_token}` } }
@@ -1745,7 +1626,6 @@ app.post("/auth/google/token", async (req, res) => {
       picture: userResponse.data.picture,
     };
 
-    // 3️⃣ Generar tu JWT
     const token = generarToken(usuario);
 
     res.json({
@@ -1772,11 +1652,9 @@ app.post("/oxxo-pay", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Configuración de credenciales y URL de Conekta
     const privateKey = process.env.CONEKTA_PRIVATE_KEY;
     const api_url = "https://api.conekta.io/orders";
 
-    // 2️⃣ Crear la orden de pago
     const orderData = {
       currency: "MXN",
       customer_info: { email },
@@ -1798,7 +1676,6 @@ app.post("/oxxo-pay", async (req, res) => {
       },
     });
 
-    // 3️⃣ Extraer datos del pago
     const oxxoCharge = response.data.charges.data[0];
     const oxxoReference = oxxoCharge.payment_method.reference;
     const expirationDate = new Date(
@@ -1818,95 +1695,180 @@ app.post("/oxxo-pay", async (req, res) => {
   }
 });
 
-// ---------------- STRIPE CHECKOUT ----------------
-
-
-// ---------------- STRIPE CHECKOUT ----------------
-import Stripe from "stripe";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-const YOUR_DOMAIN = "http://localhost:5173"; // o el puerto de tu frontend
+// --- STRIPE CHECKOUT ---
 
 app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const { items, userId } = req.body;
-    
-    console.log("🛒 Body completo recibido:", req.body);
-    console.log("📦 Items recibidos:", items);
-    console.log("👤 User ID:", userId);
+  try {
+    const { items, userId } = req.body;
+    
+    console.log("🛒 Body completo recibido:", req.body);
+    console.log("📦 Items recibidos:", items);
+    console.log("👤 User ID:", userId);
 
-    // Si items es undefined, crear datos de prueba
-    let line_items;
-    if (!items || items.length === 0) {
-      console.log("⚠️  Usando datos de prueba");
-      line_items = [{
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: "Producto de Prueba",
-            description: "Prueba de Stripe Checkout",
-          },
-          unit_amount: 10000, // $100 MXN
-        },
-        quantity: 1,
-      }];
-    } else {
-      // Usar los items reales del carrito
-      line_items = items.map(item => ({
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: item.nombre || "Producto",
-            description: item.descripcion || `Cantidad: ${item.cantidad}`,
-          },
-          unit_amount: Math.round((item.precio || 100) * 100),
-        },
-        quantity: item.cantidad || 1,
-      }));
-    }
+    let line_items;
+    if (!items || items.length === 0) {
+      console.log("⚠️  Usando datos de prueba");
+      line_items = [{
+        price_data: {
+          currency: 'mxn',
+          product_data: {
+            name: "Producto de Prueba",
+            description: "Prueba de Stripe Checkout",
+          },
+          unit_amount: 10000, 
+        },
+        quantity: 1,
+      }];
+    } else {
+      line_items = items.map(item => ({
+        price_data: {
+          currency: 'mxn',
+          product_data: {
+            name: item.nombre || "Producto",
+            description: item.descripcion || `Cantidad: ${item.cantidad}`,
+          },
+          unit_amount: Math.round((item.precio || 100) * 100),
+        },
+        quantity: item.cantidad || 1,
+      }));
+    }
 
-    console.log("📋 Line items finales:", line_items);
+    console.log("📋 Line items finales:", line_items);
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items,
-      mode: 'payment',
-      // 👇 MODIFICACIONES PARA CONTROLAR LA DIVISA/LOCALIZACIÓN
-      currency: 'mxn', // Establece MXN como la moneda principal de la sesión.
-      billing_address_collection: 'required', // Pide la dirección de facturación, lo que ayuda a Stripe a determinar la localización.
-      locale: 'es', // Fuerza el idioma español para el formulario.
-      // 👆 FIN DE MODIFICACIONES
-      success_url: `http://localhost:5173/landing`,
-      cancel_url: `http://localhost:5173/landing`,
-    });
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items,
+      mode: 'payment',
+      currency: 'mxn', 
+      billing_address_collection: 'required', 
+      locale: 'es', 
+      // 👇 SUCCESS URL CON SESSION_ID PARA CONFIRMACIÓN
+      success_url: `http://localhost:5173/landing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `http://localhost:5173/landing`,
+      metadata: {
+        userId: userId,
+        tipo: 'compra_carrito'
+      }
+    });
 
-    console.log("✅ Checkout Session creada:", session.id);
-    console.log("🔗 URL de Checkout:", session.url);
-    
-    res.json({
-      url: session.url,
-      sessionId: session.id,
-      message: items ? "Checkout con productos reales" : "Checkout con datos de prueba"
-    });
-    
-  } catch (err) {
-    console.error("❌ Error creando la sesión de Stripe:", err);
-    res.status(500).json({ 
-      error: "Error al crear la sesión de pago.",
-      details: err.message 
-    });
-  }
+    console.log("✅ Checkout Session creada:", session.id);
+    console.log("🔗 URL de Checkout:", session.url);
+    
+    res.json({
+      url: session.url,
+      sessionId: session.id,
+      message: items ? "Checkout con productos reales" : "Checkout con datos de prueba"
+    });
+    
+  } catch (err) {
+    console.error("❌ Error creando la sesión de Stripe:", err);
+    res.status(500).json({ 
+      error: "Error al crear la sesión de pago.",
+      details: err.message 
+    });
+  }
 });
-// ---------------- FIN BLOQUE STRIPE ----------------
 
-// ---------------- SISTEMA DE SUSCRIPCIONES STRIPE ----------------
+// ====================================================================
+// RUTA POST PARA CONFIRMAR PAGO STRIPE Y RESTAR STOCK - BLINDADA
+// ====================================================================
+app.post("/confirmar-pago-stripe", async (req, res) => {
+  const { session_id } = req.body;
+  console.log("🟣 Confirmando pago Stripe, sesión:", session_id);
 
-// Planes de suscripción disponibles
+  if (!session_id) {
+    return res.status(400).json({ message: "Se requiere session_id" });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ message: "El pago no fue completado." });
+    }
+
+    const userId = session.metadata.userId; 
+
+    if (!userId) {
+      return res.status(400).json({ message: "No se encontró userId en la sesión." });
+    }
+
+    const carrito = await Carrito.findOne({ id_usuario: parseInt(userId) });
+
+    if (!carrito || carrito.productos.length === 0) {
+      console.log("⚠️ Carrito vacío o ya procesado.");
+      return res.status(200).json({ message: "Carrito ya procesado o vacío." });
+    }
+
+    const productos = carrito.productos;
+    const total = session.amount_total / 100;
+
+    const contador = await ContadorRecibo.findByIdAndUpdate(
+      "id_recibo",
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const productosDisponibles = await Producto.find();
+    const detalle = productos.map((producto) => {
+      const nombreProducto =
+        productosDisponibles.find((p) => p.id_producto === producto.id_producto)
+          ?.nombre || "Producto no encontrado";
+      return `${producto.cantidad} ${nombreProducto}`;
+    }).join(", ");
+
+    const nuevoRecibo = new Recibo({
+      id_recibo: contador.sequence_value,
+      id_compra: contador.sequence_value,
+      id_usuario: userId,
+      fecha_emi: new Date(),
+      detalle,
+      precio_total: total,
+    });
+
+    await nuevoRecibo.save();
+
+    // --- BLOQUE DE RESTA DE STOCK BLINDADO (STRIPE) ---
+    console.log("📉 Actualizando inventario (Stripe)...");
+    for (const item of productos) {
+      const idProd = parseInt(item.id_producto);
+      const cant = parseInt(item.cantidad);
+
+      const resultado = await Producto.findOneAndUpdate(
+        { id_producto: idProd }, 
+        { $inc: { stock: -cant } },
+        { new: true }
+      );
+      
+      if (resultado) {
+        console.log(`✅ (Stripe) Producto ID ${idProd}: Stock bajó a ${resultado.stock}`);
+      } else {
+        console.log(`⚠️ (Stripe) Producto ID ${idProd} NO ENCONTRADO.`);
+      }
+    }
+    // --------------------------------------------------
+
+    await Carrito.findOneAndUpdate(
+      { id_usuario: parseInt(userId) },
+      { $set: { productos: [], cupon_aplicado: null } }
+    );
+
+    console.log("✅ Compra Stripe finalizada correctamente.");
+    res.status(200).json({ message: "Compra finalizada y stock actualizado." });
+
+  } catch (error) {
+    console.error("❌ Error confirmando pago Stripe:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+// --- SUSCRIPCIONES STRIPE ---
+
 const PLANES_SUSCRIPCION = {
   basica: {
     nombre: "Plan Básico",
-    precio_mensual: 299.99, // $299 MXN en centavos
-    stripe_price_id: "price_1SVKLkEwPHsvqkshI6Uh6Wkz", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 299.99, 
+    stripe_price_id: "price_1SVKLkEwPHsvqkshI6Uh6Wkz", 
     caracteristicas: [
       "Hasta 50 productos",
       "Dashboard básico", 
@@ -1916,8 +1878,8 @@ const PLANES_SUSCRIPCION = {
   },
   premium: {
     nombre: "Plan Profesional",
-    precio_mensual: 599.99, // $599 MXN en centavos
-    stripe_price_id: "price_1SVKNtEwPHsvqkshrZNBeotj", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 599.99, 
+    stripe_price_id: "price_1SVKNtEwPHsvqkshrZNBeotj", 
     caracteristicas: [
       "Productos ilimitados",
       "Dashboard avanzado",
@@ -1928,8 +1890,8 @@ const PLANES_SUSCRIPCION = {
   },
   empresarial: {
     nombre: "Plan Empresarial", 
-    precio_mensual: 999.99, // $999 MXN en centavos
-    stripe_price_id: "price_1SVKOgEwPHsvqkshUtPXATsV", // ⚠️ REEMPLAZA CON TU PRICE ID REAL
+    precio_mensual: 999.99, 
+    stripe_price_id: "price_1SVKOgEwPHsvqkshUtPXATsV", 
     caracteristicas: [
       "Todo lo del Premium",
       "Soporte 24/7",
@@ -1940,7 +1902,6 @@ const PLANES_SUSCRIPCION = {
   }
 };
 
-// 1. Endpoint para obtener planes de suscripción
 app.get("/suscripciones/planes", async (req, res) => {
   try {
     res.json({
@@ -1957,7 +1918,6 @@ app.get("/suscripciones/planes", async (req, res) => {
   }
 });
 
-// 2. Endpoint para crear sesión de checkout de suscripción
 app.post("/create-subscription-checkout", async (req, res) => {
   try {
     const { plan_tipo, userId, userEmail } = req.body;
@@ -1965,7 +1925,6 @@ app.post("/create-subscription-checkout", async (req, res) => {
     console.log("📋 Creando suscripción para plan:", plan_tipo);
     console.log("👤 User ID:", userId);
 
-    // Validar que el plan existe
     const plan = PLANES_SUSCRIPCION[plan_tipo];
     if (!plan) {
       return res.status(400).json({ 
@@ -1974,19 +1933,18 @@ app.post("/create-subscription-checkout", async (req, res) => {
       });
     }
 
-    // Crear sesión de checkout para suscripción
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
-          price: plan.stripe_price_id, // ⚠️ IMPORTANTE: Reemplaza con tus Price IDs reales
+          price: plan.stripe_price_id, 
           quantity: 1,
         },
       ],
       mode: 'subscription',
       success_url: `http://localhost:5173/suscripciones?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${YOUR_DOMAIN}/suscripciones`,
-      customer_email: userEmail, // Opcional: email del usuario
+      customer_email: userEmail, 
       metadata: {
         user_id: userId,
         plan_tipo: plan_tipo
@@ -2018,19 +1976,40 @@ app.post("/create-subscription-checkout", async (req, res) => {
   }
 });
 
-// 3. Endpoint para verificar estado de suscripción
+// 3. MODIFICACIÓN: Verificar prueba de 15 días en el estado de suscripción
 app.get("/suscripcion/estado/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     
     console.log("🔍 Verificando suscripción para user:", userId);
 
-    // Buscar suscripciones activas del usuario
+    // 1. Buscar en Stripe
     const subscriptions = await stripe.subscriptions.search({
       query: `metadata['user_id']:'${userId}' AND status:'active'`,
     });
 
     if (subscriptions.data.length === 0) {
+        // 2. Si no hay Stripe, buscar prueba local en BD
+        const usuario = await Usuario.findOne({ id_usuario: parseInt(userId) });
+        
+        // Si tiene trial_end y la fecha actual es MENOR a la de vencimiento
+        if (usuario && usuario.trial_end && new Date(usuario.trial_end) > new Date()) {
+             return res.json({
+                success: true,
+                tiene_suscripcion: true,
+                suscripcion: {
+                    id: 'trial_15_dias',
+                    plan: 'prueba', // Debe coincidir con el tipo en el frontend
+                    nombre_plan: '15 DÍAS GRATIS',
+                    estado: 'active',
+                    fecha_inicio: usuario.fecha_reg,
+                    fecha_vencimiento: usuario.trial_end,
+                    precio_mensual: 0,
+                    caracteristicas: ['Prueba gratuita', 'Acceso total']
+                }
+            });
+        }
+
       return res.json({ 
         success: true,
         tiene_suscripcion: false,
@@ -2066,14 +2045,12 @@ app.get("/suscripcion/estado/:userId", async (req, res) => {
   }
 });
 
-// 4. Endpoint para cancelar suscripción
 app.post("/suscripcion/cancelar", async (req, res) => {
   try {
     const { userId } = req.body;
 
     console.log("🗑️  Cancelando suscripción para user:", userId);
 
-    // Buscar suscripción activa del usuario
     const subscriptions = await stripe.subscriptions.search({
       query: `metadata['user_id']:'${userId}' AND status:'active'`,
     });
@@ -2087,7 +2064,6 @@ app.post("/suscripcion/cancelar", async (req, res) => {
 
     const subscription = subscriptions.data[0];
     
-    // Cancelar la suscripción (al final del periodo actual)
     const canceledSubscription = await stripe.subscriptions.update(
       subscription.id,
       { cancel_at_period_end: true }
@@ -2109,7 +2085,6 @@ app.post("/suscripcion/cancelar", async (req, res) => {
   }
 });
 
-// 5. Endpoint para webhook de suscripciones (opcional - para actualizaciones automáticas)
 app.post("/stripe-webhook", async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -2121,7 +2096,6 @@ app.post("/stripe-webhook", async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Manejar diferentes eventos de suscripción
   switch (event.type) {
     case 'customer.subscription.created':
       const subscriptionCreated = event.data.object;
@@ -2145,13 +2119,10 @@ app.post("/stripe-webhook", async (req, res) => {
   res.json({ received: true });
 });
 
-// ---------------- FIN SISTEMA DE SUSCRIPCIONES ----------------
-
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
 
-// Inicia el servidor
 export default app;
