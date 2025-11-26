@@ -1642,6 +1642,79 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
+
+const SUPERSET_USERNAME = "	ctmivett";
+const SUPERSET_PASSWORD = "impicafresa179";
+const SUPERSET_URL = "http://localhost:8088";
+
+// 🔥 1. Función para obtener access_token automáticamente
+async function getAccessToken() {
+  const response = await fetch(`${SUPERSET_URL}/api/v1/security/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: SUPERSET_USERNAME,
+      password: SUPERSET_PASSWORD,
+      provider: "db",
+      refresh: true
+    })
+  });
+
+  const data = await response.json();
+
+  if (!data.access_token) {
+    console.error("Error al obtener access token:", data);
+    throw new Error("No se pudo obtener access_token");
+  }
+
+  return data.access_token;
+}
+
+// 🔥 2. Ruta para generar el guest token automáticamente
+router.get("/superset-token", async (req, res) => {
+  try {
+    // 1️⃣ Obtener access_token haciendo login
+    const accessToken = await getAccessToken();
+
+    // 2️⃣ Usar access_token para pedir guest_token
+    const response = await fetch(`${SUPERSET_URL}/api/v1/security/guest_token/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        user: {
+          username: "guest",
+        },
+        resources: [
+          {
+            id: "9b6e3665-11f8-4e27-8af7-7b132d5f4a55",
+            type: "dashboard",
+          },
+        ],
+        rls: []
+      })
+    });
+
+    const data = await response.json();
+
+    if (!data.token) {
+      return res.status(500).json({
+        error: "No se pudo generar guest token",
+        detail: data
+      });
+    }
+
+    res.json({ token: data.token });
+
+  } catch (error) {
+    console.error("Error generando guest token:", error);
+    res.status(500).json({ error: "Error generando guest token" });
+  }
+});
+
+
 app.post("/oxxo-pay", async (req, res) => {
   const { total, email } = req.body;
 
