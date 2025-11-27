@@ -1664,6 +1664,9 @@ const parseRoles = (rStr) =>
 
 app.get("/superset-token", async (req, res) => {
   try {
+
+    console.log("🔵 Generando Superset admin Token...");
+
     // 1. Iniciar sesión de administrador para obtener el token de acceso
     const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
       username: SUPERSET_USERNAME,
@@ -1672,6 +1675,8 @@ app.get("/superset-token", async (req, res) => {
     });
 
     const adminAccessToken = loginResponse.data.access_token; // Token del admin para autenticar el POST
+
+    console.log("🔵 Generando Superset Guest Token...");
 
     // 2. Crear el payload para el Guest Token (ahora incluye rls: [])
     const guestTokenPayload = {
@@ -1703,7 +1708,7 @@ app.get("/superset-token", async (req, res) => {
         },
       }
     );
-
+console.log("🔵 Guest Token generado con éxito.");
     const guestToken = guestTokenResponse.data.token; // Superset devuelve el guest token como 'token'
     res.json({ token: guestToken }); // Devolver el Guest Token al frontend
   } catch (error) {
