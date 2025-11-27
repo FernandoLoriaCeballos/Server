@@ -1650,53 +1650,17 @@ const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-
 
 app.get("/superset-token", async (req, res) => {
   try {
-    console.log(">> Obteniendo admin JWT de Superset...");
-
-    // 1) Login para obtener admin JWT
-    const loginReq = await fetch(`${SUPERSET_URL}/api/v1/security/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: SUPERSET_USERNAME,
-        password: SUPERSET_PASSWORD,
-        provider: "db",
-      }),
+    const response = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
+      username: SUPERSET_USERNAME,
+      password: SUPERSET_PASSWORD,
+      provider: "db",
     });
 
-    const loginData = await loginReq.json();
-    if (!loginData?.access_token) {
-      console.error("LOGIN ERROR:", loginData);
-      return res.status(500).json({ error: "No se pudo obtener el token admin", detail: loginData });
-    }
-    const ADMIN_JWT = loginData.access_token;
-    console.log(">> ADMIN JWT obtenido OK");
-
-    // 2) Solicitar guest token
-    const guestReq = await fetch(`${SUPERSET_URL}/api/v1/security/guest_token/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ADMIN_JWT}`,
-      },
-      body: JSON.stringify({
-        user: { username: "ctmivett" },
-        resources: [{ id: SUPERSET_RESOURCE_ID, type: "dashboard" }],
-        rls: []
-      }),
-    });
-
-    const guestData = await guestReq.json();
-
-    if (!guestData?.token) {
-      console.error("GUEST TOKEN ERROR:", guestData);
-      return res.status(500).json({ error: "No se pudo generar Guest Token", detail: guestData });
-    }
-
-    console.log(">> Guest Token generado OK");
-    return res.json({ token: guestData.token });
+    const guestToken = response.data.access_token; // Adjust based on actual response structure
+    res.json({ token: guestToken });
   } catch (error) {
-    console.error("ERROR GENERAL /superset-token:", error);
-    return res.status(500).json({ error: "Error interno del servidor", detail: error.message || error });
+    console.error("Error generating guest token:", error);
+    res.status(500).json({ message: "Error generating guest token" });
   }
 });
 
