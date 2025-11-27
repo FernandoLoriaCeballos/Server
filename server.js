@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
+import fetch from "node-fetch"; // ADD: usar node-fetch para llamadas a Superset
 
 dotenv.config(); // Siempre al inicio
 console.log("🔑 Stripe Key cargada:", process.env.STRIPE_SECRET_KEY ? "✅ Sí" : "❌ No");
@@ -1660,74 +1661,67 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
-// GET /superset-token -> genera guest token (usa credenciales de entorno) + maneja CSRF
+// Login → obtiene access_token de superset
+async function getSupersetAdminToken() {
+  const res = await fetch(`${SUPERSET_URL}/api/v1/security/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: SUPERSET_USERNAME,
+      password: SUPERSET_PASSWORD,
+      provider: "db",
+      refresh: true
+    })
+  });
+
+  const data = await res.json();
+
+  if (!data?.access_token) {
+    console.error("Error login superset:", data);
+    throw new Error("No se pudo obtener el token admin");
+  }
+
+  return data.access_token;
+}
+
+// Ruta que el frontend llama para obtener guest token
 app.get("/superset-token", async (req, res) => {
   try {
-    const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
-    const SUPERSET_ADMIN_USER = process.env.SUPERSET_ADMIN_USER || process.env.SUPERSET_USERNAME;
-    const SUPERSET_ADMIN_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || process.env.SUPERSET_PASSWORD;
-    const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55";
+    const adminToken = await getSupersetAdminToken();
 
-    if (!SUPERSET_ADMIN_USER || !SUPERSET_ADMIN_PASSWORD) {
-      console.error("Superset admin credentials missing in env");
-      return res.status(500).json({ error: "Superset credentials not configured" });
-    }
+    const guestRes = await fetch(`${SUPERSET_URL}/api/v1/security/guest_token/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        user: { username: "guest" },
+        resources: [
+          {
+            id: process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55",
+            type: "dashboard"
+          }
+        ],
+        rls: []
+      }),
+    });
 
-    // 1) Login to obtain ADMIN JWT
-    const loginResp = await axios.post(
-      `${SUPERSET_URL}/api/v1/security/login`,
-      { username: SUPERSET_ADMIN_USER, password: SUPERSET_ADMIN_PASSWORD, provider: "db" },
-      { headers: { "Content-Type": "application/json" } }
-    );
+    const guestData = await guestRes.json();
 
-    const ADMIN_JWT = loginResp.data?.access_token;
-    if (!ADMIN_JWT) {
-      console.error("No admin JWT from Superset login:", loginResp.data);
-      return res.status(500).json({ error: "Could not obtain admin token from Superset", detail: loginResp.data });
-    }
-
-    // 2) Request CSRF token (some Superset deployments require X-CSRFToken)
-    let csrfToken = null;
-    try {
-      const csrfResp = await axios.get(`${SUPERSET_URL}/api/v1/security/csrf_token/`, {
-        headers: { Authorization: `Bearer ${ADMIN_JWT}` },
+    if (!guestData.token) {
+      console.error("Superset did not return token:", guestData);
+      return res.status(500).json({
+        error: "Superset no devolvió token",
+        detail: guestData
       });
-      // Superset may return { csrf_token: '...' } or { result: { csrf_token: '...' } }
-      csrfToken = csrfResp.data?.csrf_token || csrfResp.data?.result?.csrf_token || null;
-      console.log("[/superset-token] csrfToken:", !!csrfToken);
-    } catch (e) {
-      console.warn("[/superset-token] No CSRF token obtained (continuing).", e.response?.data || e.message);
     }
 
-    // 3) Create guest token using Authorization + optional X-CSRFToken
-    const guestBody = {
-      user: { username: "guest" },
-      resources: [{ id: SUPERSET_RESOURCE_ID, type: "dashboard" }],
-      rls: []
-    };
+    res.json({ token: guestData.token });
 
-    const guestHeaders = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ADMIN_JWT}`,
-    };
-    if (csrfToken) guestHeaders["X-CSRFToken"] = csrfToken;
-
-    const guestResp = await axios.post(
-      `${SUPERSET_URL}/api/v1/security/guest_token/`,
-      guestBody,
-      { headers: guestHeaders }
-    );
-
-    const guestToken = guestResp.data?.token || guestResp.data?.result?.token;
-    if (!guestToken) {
-      console.error("Guest token creation failed:", guestResp.data);
-      return res.status(500).json({ error: "Could not create guest token", detail: guestResp.data });
-    }
-
-    return res.json({ token: guestToken });
   } catch (error) {
-    console.error("Error /superset-token:", error.response?.data || error.message || error);
-    return res.status(500).json({ error: "Error generating Superset guest token", detail: error.response?.data || error.message });
+    console.error("Error generando token:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
