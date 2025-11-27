@@ -1645,47 +1645,46 @@ app.post("/auth/google/token", async (req, res) => {
 
 const SUPERSET_USERNAME = "ctmivett";
 const SUPERSET_PASSWORD = "impicafresa179";
-const SUPERSET_URL = "http://localhost:8088";
 
-// 🔥 1. Función para obtener access_token automáticamente
-async function getAccessToken() {
-  const response = await fetch(`${SUPERSET_URL}/api/v1/security/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username: SUPERSET_USERNAME,
-      password: SUPERSET_PASSWORD,
-      provider: "db",
-      refresh: true
-    })
-  });
-
-  const data = await response.json();
-
-  if (!data.access_token) {
-    console.error("Error al obtener access token:", data);
-    throw new Error("No se pudo obtener access_token");
-  }
-
-  return data.access_token;
-}
-
-// 🔥 2. Ruta para generar el guest token automáticamente
 router.get("/superset-token", async (req, res) => {
   try {
-    // 1️⃣ Obtener access_token haciendo login
-    const accessToken = await getAccessToken();
+    console.log(">> Obteniendo admin JWT de Superset...");
 
-    // 2️⃣ Usar access_token para pedir guest_token
-    const response = await fetch(`${SUPERSET_URL}/api/v1/security/guest_token/`, {
+    // 1️⃣ LOGIN PARA OBTENER access_token (ADMIN_JWT)
+    const loginRequest = await fetch("http://localhost:8088/api/v1/security/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: SUPERSET_USERNAME,
+        password: SUPERSET_PASSWORD,
+        provider: "db",
+      }),
+    });
+
+    const loginData = await loginRequest.json();
+
+    if (!loginData?.access_token) {
+      console.log("LOGIN ERROR:", loginData);
+      return res.status(500).json({
+        error: "No se pudo obtener el token admin",
+        detail: loginData,
+      });
+    }
+
+    const ADMIN_JWT = loginData.access_token;
+
+    console.log(">> ADMIN JWT obtenido OK");
+
+    // 2️⃣ Crear Guest Token
+    const guestReq = await fetch("http://localhost:8088/api/v1/security/guest_token/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${ADMIN_JWT}`,
       },
       body: JSON.stringify({
         user: {
-          username: "guest",
+          username: "guest", // usuario anónimo
         },
         resources: [
           {
@@ -1693,24 +1692,27 @@ router.get("/superset-token", async (req, res) => {
             type: "dashboard",
           },
         ],
-        rls: []
-      })
+        rls: [],
+      }),
     });
 
-    const data = await response.json();
+    const guestData = await guestReq.json();
 
-    if (!data.token) {
+    if (!guestData?.token) {
+      console.log("GUEST TOKEN ERROR:", guestData);
       return res.status(500).json({
-        error: "No se pudo generar guest token",
-        detail: data
+        error: "No se pudo generar Guest Token",
+        detail: guestData,
       });
     }
 
-    res.json({ token: data.token });
+    console.log(">> Guest Token generado OK");
+
+    res.json({ token: guestData.token });
 
   } catch (error) {
-    console.error("Error generando guest token:", error);
-    res.status(500).json({ error: "Error generando guest token" });
+    console.error("ERROR GENERAL:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
