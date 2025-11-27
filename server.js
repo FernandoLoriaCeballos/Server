@@ -1679,7 +1679,7 @@ app.get("/superset-token", async (req, res) => {
         Authorization: `Bearer ${ADMIN_JWT}`,
       },
       body: JSON.stringify({
-        user: { username: "guest" },
+        user: { username: "ctmivett" },
         resources: [{ id: SUPERSET_RESOURCE_ID, type: "dashboard" }],
         rls: []
       }),
