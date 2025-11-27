@@ -9,7 +9,6 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
-import jwt from "jsonwebtoken";
 
 dotenv.config(); // Siempre al inicio
 console.log("🔑 Stripe Key cargada:", process.env.STRIPE_SECRET_KEY ? "✅ Sí" : "❌ No");
@@ -1644,114 +1643,94 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 // --- SUPERNSET GUEST TOKEN (un solo endpoint) ---
+const axios = require('axios'); // Asegúrate de tener axios importado/requerido
 
+// Variables de entorno o valores por defecto
 const SUPERSET_USERNAME = process.env.SUPERSET_ADMIN_USER || "ctmivett";
 const SUPERSET_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || "impicafresa179";
-const SUPERSET_URL = (process.env.SUPERSET_URL || "http://localhost:8088").replace(/\/$/, "");
+const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
 const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55";
+// Leer roles desde env: puede ser "gamma" o "Gamma" u otros, separados por comas.
+// Ejemplo: SUPERSET_GUEST_ROLES=Gamma,Public
+const SUPERSET_GUEST_ROLES = process.env.SUPERSET_GUEST_ROLES || "Gamma"; 
 
-// health endpoint (quick check)
-app.get("/health", (req, res) => {
-  res.json({ ok: true, service: "backend", env: process.env.NODE_ENV || "development" });
-});
+/**
+ * Parsea una cadena de roles separada por comas en un array de strings.
+ * Ejemplo: "Admin, Public" -> ["Admin", "Public"]
+ */
+const parseRoles = (rStr) =>
+  String(rStr)
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
 
-// unified handler used by GET and POST for flexibility (query or body resource override)
-async function generateGuestTokenHandler(req, res) {
+
+// Definición del endpoint (asumiendo que esto está dentro de una función de ruta de Express)
+app.get("/superset-token", async (req, res) => {
   try {
-    const resourceId = req.query.resource_id || req.body?.resource_id || SUPERSET_RESOURCE_ID;
-    console.log(`[superset-token] request from ${req.ip} (resource=${resourceId})`);
+    // 1. Iniciar sesión de administrador para obtener el token de acceso
+    const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
+      username: SUPERSET_USERNAME,
+      password: SUPERSET_PASSWORD,
+      provider: "db",
+    });
 
-    // 1) Admin login
-    const loginResp = await axios.post(
-      `${SUPERSET_URL}/api/v1/security/login`,
-      {
-        username: SUPERSET_USERNAME,
-        password: SUPERSET_PASSWORD,
-        provider: "db",
-      },
-      { headers: { "Content-Type": "application/json" }, timeout: 8000 }
-    );
+    const adminAccessToken = loginResponse.data.access_token; // Token del admin para autenticar el POST
 
-    const adminAccessToken = loginResp?.data?.access_token || loginResp?.data?.result?.access_token;
-    if (!adminAccessToken) {
-      console.error("[superset-token] login returned unexpected payload:", loginResp.data);
-      return res.status(502).json({ message: "Superset login succeeded but no admin access token returned", raw: loginResp.data });
-    }
-
-    // 2) Build guest token payload
-    const guestPayload = {
+    // 2. Crear el payload para el Guest Token
+    const guestTokenPayload = {
+      // Define el usuario invitado (opcional, para RLS o Jinja)
       user: {
-        username: `guest_${Date.now()}`,
+        username: "embedded_user",
         first_name: "Embedded",
-        last_name: "Guest",
+        last_name: "User"
       },
-      resources: [
-        {
-          type: "dashboard",
-          id: resourceId,
-        },
-      ],
+      // Define los recursos a los que el token dará acceso
+      resources: [{
+        type: "dashboard",
+        id: SUPERSET_RESOURCE_ID // El ID del dashboard
+      }],
+      // roles que tendrá el guest token (array). Configurable via SUPERSET_GUEST_ROLES
+      current_roles: parseRoles(SUPERSET_GUEST_ROLES)
+      // Opcional: añadir rls aquí si hace falta
     };
 
-    // 3) Request guest token
-    const guestResp = await axios.post(
+    // 3. Solicitar el Guest Token a Superset usando el token del administrador
+    const guestTokenResponse = await axios.post(
       `${SUPERSET_URL}/api/v1/security/guest_token`,
-      guestPayload,
+      guestTokenPayload,
       {
         headers: {
-          Authorization: `Bearer ${adminAccessToken}`,
+          Authorization: `Bearer ${adminAccessToken}`, // Autenticación como admin
           "Content-Type": "application/json",
         },
-        timeout: 15000,
       }
     );
 
-    const guestToken = guestResp?.data?.token || guestResp?.data?.guest_token || guestResp?.data?.result?.token;
-    if (!guestToken) {
-      console.error("[superset-token] guest token missing in response:", guestResp.data);
-      return res.status(502).json({ message: "No guest token returned from Superset", raw: guestResp.data });
-    }
-
-    console.log("[superset-token] guest token generated");
-    return res.json({ token: guestToken });
-  } catch (err) {
-    console.error("[superset-token] error:", err.response?.status, err.response?.data || err.message);
-    const status = err.response?.status || 500;
-    return res.status(status).json({ message: "Error generating guest token", details: err.response?.data || err.message });
-  }
-}
-
-// support both GET and POST (frontend can call either)
-app.get("/superset-token", generateGuestTokenHandler);
-app.post("/superset-token", generateGuestTokenHandler);
-
-// --- STRIPE: create-checkout-session (minimal) ---
-app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const { items, success_url, cancel_url } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "items array required" });
-    }
-
-    // Map incoming items to Stripe line_items. Expect items: [{ price_data: { currency, unit_amount, product_data: { name } }, quantity }]
-    const line_items = items.map(i => ({
-      price_data: i.price_data,
-      quantity: i.quantity || 1
-    }));
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      line_items,
-      success_url: (success_url || `${YOUR_DOMAIN}/success`) + "?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: cancel_url || `${YOUR_DOMAIN}/cancel`,
-    });
-
-    res.json({ url: session.url, id: session.id });
+    const guestToken = guestTokenResponse.data.token; // Superset devuelve el guest token como 'token'
+    res.json({ token: guestToken }); // Devolver el Guest Token al frontend
   } catch (error) {
-    console.error("Error creating checkout session:", error);
-    res.status(500).json({ message: "Error creating checkout session", details: error.message });
+    // Manejo de errores detallado (útil para la depuración)
+    let status = error.response?.status || 500;
+    let message = "Error generating guest token";
+    let details = error.response?.data || error.message;
+
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+      message = `Connection to Superset failed: ${error.code}. Is Superset running at ${SUPERSET_URL}?`;
+      details = error.message;
+      status = 503; // Service Unavailable
+    } else if (error.response?.status === 401) {
+      message = "Admin Login Failed (401). Check SUPERSET_ADMIN_USER/PASSWORD.";
+    } else if (error.response?.status === 403) {
+      message = "Guest Token Forbidden (403). Check if admin user has 'can_grant_guest_token' permission.";
+    }
+
+    console.error(`--- [ERROR] Guest Token (${status}) ---`);
+    console.error("Mensaje:", message);
+    console.error("Detalles:", details);
+    console.error("---------------------------------------");
+
+    res.status(status).json({ message: message, details: details });
   }
 });
 
