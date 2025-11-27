@@ -1650,9 +1650,18 @@ const SUPERSET_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || "impicafresa179
 const SUPERSET_URL = (process.env.SUPERSET_URL || "http://localhost:8088").replace(/\/$/, "");
 const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55";
 
-app.get("/superset-token", async (req, res) => {
+// health endpoint (quick check)
+app.get("/health", (req, res) => {
+  res.json({ ok: true, service: "backend", env: process.env.NODE_ENV || "development" });
+});
+
+// unified handler used by GET and POST for flexibility (query or body resource override)
+async function generateGuestTokenHandler(req, res) {
   try {
-    // 1) Login as admin to get an access token
+    const resourceId = req.query.resource_id || req.body?.resource_id || SUPERSET_RESOURCE_ID;
+    console.log(`[superset-token] request from ${req.ip} (resource=${resourceId})`);
+
+    // 1) Admin login
     const loginResp = await axios.post(
       `${SUPERSET_URL}/api/v1/security/login`,
       {
@@ -1665,8 +1674,8 @@ app.get("/superset-token", async (req, res) => {
 
     const adminAccessToken = loginResp?.data?.access_token || loginResp?.data?.result?.access_token;
     if (!adminAccessToken) {
-      console.error("Superset login succeeded but no adminAccessToken returned:", loginResp.data);
-      return res.status(500).json({ message: "No admin access token from Superset login" });
+      console.error("[superset-token] login returned unexpected payload:", loginResp.data);
+      return res.status(502).json({ message: "Superset login succeeded but no admin access token returned", raw: loginResp.data });
     }
 
     // 2) Build guest token payload
@@ -1674,15 +1683,14 @@ app.get("/superset-token", async (req, res) => {
       user: {
         username: `guest_${Date.now()}`,
         first_name: "Embedded",
-        last_name: "Guest"
+        last_name: "Guest",
       },
       resources: [
         {
           type: "dashboard",
-          id: SUPERSET_RESOURCE_ID
-        }
-      ]
-      // optional: rls or other fields
+          id: resourceId,
+        },
+      ],
     };
 
     // 3) Request guest token
@@ -1692,29 +1700,30 @@ app.get("/superset-token", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${adminAccessToken}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        timeout: 8000
+        timeout: 15000,
       }
     );
 
-    const guestToken =
-      guestResp?.data?.token ||
-      guestResp?.data?.guest_token ||
-      guestResp?.data?.result?.token;
-
+    const guestToken = guestResp?.data?.token || guestResp?.data?.guest_token || guestResp?.data?.result?.token;
     if (!guestToken) {
-      console.error("Guest token response unexpected:", guestResp.data);
-      return res.status(500).json({ message: "No guest token returned from Superset" });
+      console.error("[superset-token] guest token missing in response:", guestResp.data);
+      return res.status(502).json({ message: "No guest token returned from Superset", raw: guestResp.data });
     }
 
+    console.log("[superset-token] guest token generated");
     return res.json({ token: guestToken });
   } catch (err) {
-    console.error("Error generating guest token:", err.response?.status, err.response?.data || err.message);
+    console.error("[superset-token] error:", err.response?.status, err.response?.data || err.message);
     const status = err.response?.status || 500;
     return res.status(status).json({ message: "Error generating guest token", details: err.response?.data || err.message });
   }
-});
+}
+
+// support both GET and POST (frontend can call either)
+app.get("/superset-token", generateGuestTokenHandler);
+app.post("/superset-token", generateGuestTokenHandler);
 
 // --- STRIPE: create-checkout-session (minimal) ---
 app.post("/create-checkout-session", async (req, res) => {
