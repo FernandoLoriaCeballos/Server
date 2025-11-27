@@ -1660,556 +1660,75 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
-
-const SUPERSET_USERNAME = "ctmivett";
-const SUPERSET_PASSWORD = "impicafresa179";
-
-router.get("/superset-token", async (req, res) => {
+// GET /superset-token -> genera guest token (usa credenciales de entorno) + maneja CSRF
+app.get("/superset-token", async (req, res) => {
   try {
-    console.log(">> Obteniendo admin JWT de Superset...");
+    const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
+    const SUPERSET_ADMIN_USER = process.env.SUPERSET_ADMIN_USER || process.env.SUPERSET_USERNAME;
+    const SUPERSET_ADMIN_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || process.env.SUPERSET_PASSWORD;
+    const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55";
 
-    // 1️⃣ LOGIN PARA OBTENER access_token (ADMIN_JWT)
-    const loginRequest = await fetch("http://localhost:8088/api/v1/security/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: SUPERSET_USERNAME,
-        password: SUPERSET_PASSWORD,
-        provider: "db",
-      }),
-    });
-
-    const loginData = await loginRequest.json();
-
-    if (!loginData?.access_token) {
-      console.log("LOGIN ERROR:", loginData);
-      return res.status(500).json({
-        error: "No se pudo obtener el token admin",
-        detail: loginData,
-      });
+    if (!SUPERSET_ADMIN_USER || !SUPERSET_ADMIN_PASSWORD) {
+      console.error("Superset admin credentials missing in env");
+      return res.status(500).json({ error: "Superset credentials not configured" });
     }
 
-    const ADMIN_JWT = loginData.access_token;
+    // 1) Login to obtain ADMIN JWT
+    const loginResp = await axios.post(
+      `${SUPERSET_URL}/api/v1/security/login`,
+      { username: SUPERSET_ADMIN_USER, password: SUPERSET_ADMIN_PASSWORD, provider: "db" },
+      { headers: { "Content-Type": "application/json" } }
+    );
 
-    console.log(">> ADMIN JWT obtenido OK");
-
-    // 2️⃣ Crear Guest Token
-    const guestReq = await fetch("http://localhost:8088/api/v1/security/guest_token/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ADMIN_JWT}`,
-      },
-      body: JSON.stringify({
-        user: {
-          username: "guest", // usuario anónimo
-        },
-        resources: [
-          {
-            id: "9b6e3665-11f8-4e27-8af7-7b132d5f4a55",
-            type: "dashboard",
-          },
-        ],
-        rls: [],
-      }),
-    });
-
-    const guestData = await guestReq.json();
-
-    if (!guestData?.token) {
-      console.log("GUEST TOKEN ERROR:", guestData);
-      return res.status(500).json({
-        error: "No se pudo generar Guest Token",
-        detail: guestData,
-      });
+    const ADMIN_JWT = loginResp.data?.access_token;
+    if (!ADMIN_JWT) {
+      console.error("No admin JWT from Superset login:", loginResp.data);
+      return res.status(500).json({ error: "Could not obtain admin token from Superset", detail: loginResp.data });
     }
 
-    console.log(">> Guest Token generado OK");
+    // 2) Request CSRF token (some Superset deployments require X-CSRFToken)
+    let csrfToken = null;
+    try {
+      const csrfResp = await axios.get(`${SUPERSET_URL}/api/v1/security/csrf_token/`, {
+        headers: { Authorization: `Bearer ${ADMIN_JWT}` },
+      });
+      // Superset may return { csrf_token: '...' } or { result: { csrf_token: '...' } }
+      csrfToken = csrfResp.data?.csrf_token || csrfResp.data?.result?.csrf_token || null;
+      console.log("[/superset-token] csrfToken:", !!csrfToken);
+    } catch (e) {
+      console.warn("[/superset-token] No CSRF token obtained (continuing).", e.response?.data || e.message);
+    }
 
-    res.json({ token: guestData.token });
-
-  } catch (error) {
-    console.error("ERROR GENERAL:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
-
-
-app.post("/oxxo-pay", async (req, res) => {
-  const { total, email } = req.body;
-
-  if (!total || !email) {
-    return res.status(400).json({
-      message: "Los campos 'total' y 'email' son requeridos.",
-    });
-  }
-
-  try {
-    const privateKey = process.env.CONEKTA_PRIVATE_KEY;
-    const api_url = "https://api.conekta.io/orders";
-
-    const orderData = {
-      currency: "MXN",
-      customer_info: { email },
-      charges: [
-        {
-          amount: Math.round(parseFloat(total) * 100),
-          payment_method: {
-            type: "oxxo_cash",
-          },
-        },
-      ],
+    // 3) Create guest token using Authorization + optional X-CSRFToken
+    const guestBody = {
+      user: { username: "guest" },
+      resources: [{ id: SUPERSET_RESOURCE_ID, type: "dashboard" }],
+      rls: []
     };
 
-    const response = await axios.post(api_url, orderData, {
-      headers: {
-        Authorization: `Bearer ${privateKey}`,
-        "Content-Type": "application/json",
-        "Conekta-Version": "2.1.0",
-      },
-    });
+    const guestHeaders = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ADMIN_JWT}`,
+    };
+    if (csrfToken) guestHeaders["X-CSRFToken"] = csrfToken;
 
-    const oxxoCharge = response.data.charges.data[0];
-    const oxxoReference = oxxoCharge.payment_method.reference;
-    const expirationDate = new Date(
-      oxxoCharge.payment_method.expires_at * 1000
-    ).toLocaleString();
-
-    res.json({
-      success: true,
-      reference: oxxoReference,
-      expirationDate,
-    });
-  } catch (error) {
-    console.error("Error al generar pago OXXO:", error.response?.data || error.message);
-    res.status(500).json({
-      message: "Error al procesar el pago OXXO.",
-    });
-  }
-});
-
-// --- STRIPE CHECKOUT ---
-
-app.post("/create-checkout-session", async (req, res) => {
-  try {
-    const { items, userId } = req.body;
-    
-    console.log("🛒 Body completo recibido:", req.body);
-    console.log("📦 Items recibidos:", items);
-    console.log("👤 User ID:", userId);
-
-    let line_items;
-    if (!items || items.length === 0) {
-      console.log("⚠️  Usando datos de prueba");
-      line_items = [{
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: "Producto de Prueba",
-            description: "Prueba de Stripe Checkout",
-          },
-          unit_amount: 10000, 
-        },
-        quantity: 1,
-      }];
-    } else {
-      line_items = items.map(item => ({
-        price_data: {
-          currency: 'mxn',
-          product_data: {
-            name: item.nombre || "Producto",
-            description: item.descripcion || `Cantidad: ${item.cantidad}`,
-          },
-          unit_amount: Math.round((item.precio || 100) * 100),
-        },
-        quantity: item.cantidad || 1,
-      }));
-    }
-
-    console.log("📋 Line items finales:", line_items);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items,
-      mode: 'payment',
-      currency: 'mxn', 
-      billing_address_collection: 'required', 
-      locale: 'es', 
-      // 👇 SUCCESS URL CON SESSION_ID PARA CONFIRMACIÓN
-      success_url: `http://localhost:5173/landing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/landing`,
-      metadata: {
-        userId: userId,
-        tipo: 'compra_carrito'
-      }
-    });
-
-    console.log("✅ Checkout Session creada:", session.id);
-    console.log("🔗 URL de Checkout:", session.url);
-    
-    res.json({
-      url: session.url,
-      sessionId: session.id,
-      message: items ? "Checkout con productos reales" : "Checkout con datos de prueba"
-    });
-    
-  } catch (err) {
-    console.error("❌ Error creando la sesión de Stripe:", err);
-    res.status(500).json({ 
-      error: "Error al crear la sesión de pago.",
-      details: err.message 
-    });
-  }
-});
-
-// ====================================================================
-// RUTA POST PARA CONFIRMAR PAGO STRIPE Y RESTAR STOCK - BLINDADA
-// ====================================================================
-app.post("/confirmar-pago-stripe", async (req, res) => {
-  const { session_id } = req.body;
-  console.log("🟣 Confirmando pago Stripe, sesión:", session_id);
-
-  if (!session_id) {
-    return res.status(400).json({ message: "Se requiere session_id" });
-  }
-
-  try {
-    const session = await stripe.checkout.sessions.retrieve(session_id);
-
-    if (session.payment_status !== 'paid') {
-      return res.status(400).json({ message: "El pago no fue completado." });
-    }
-
-    const userId = session.metadata.userId; 
-
-    if (!userId) {
-      return res.status(400).json({ message: "No se encontró userId en la sesión." });
-    }
-
-    const carrito = await Carrito.findOne({ id_usuario: parseInt(userId) });
-
-    if (!carrito || carrito.productos.length === 0) {
-      console.log("⚠️ Carrito vacío o ya procesado.");
-      return res.status(200).json({ message: "Carrito ya procesado o vacío." });
-    }
-
-    const productos = carrito.productos;
-    const total = session.amount_total / 100;
-
-    const contador = await ContadorRecibo.findByIdAndUpdate(
-      "id_recibo",
-      { $inc: { sequence_value: 1 } },
-      { new: true, upsert: true }
+    const guestResp = await axios.post(
+      `${SUPERSET_URL}/api/v1/security/guest_token/`,
+      guestBody,
+      { headers: guestHeaders }
     );
 
-    const productosDisponibles = await Producto.find();
-    const detalle = productos.map((producto) => {
-      const nombreProducto =
-        productosDisponibles.find((p) => p.id_producto === producto.id_producto)
-          ?.nombre || "Producto no encontrado";
-      return `${producto.cantidad} ${nombreProducto}`;
-    }).join(", ");
-
-    const nuevoRecibo = new Recibo({
-      id_recibo: contador.sequence_value,
-      id_compra: contador.sequence_value,
-      id_usuario: userId,
-      fecha_emi: new Date(),
-      detalle,
-      precio_total: total,
-    });
-
-    await nuevoRecibo.save();
-
-    // --- BLOQUE DE RESTA DE STOCK BLINDADO (STRIPE) ---
-    console.log("📉 Actualizando inventario (Stripe)...");
-    for (const item of productos) {
-      const idProd = parseInt(item.id_producto);
-      const cant = parseInt(item.cantidad);
-
-      const resultado = await Producto.findOneAndUpdate(
-        { id_producto: idProd }, 
-        { $inc: { stock: -cant } },
-        { new: true }
-      );
-      
-      if (resultado) {
-        console.log(`✅ (Stripe) Producto ID ${idProd}: Stock bajó a ${resultado.stock}`);
-      } else {
-        console.log(`⚠️ (Stripe) Producto ID ${idProd} NO ENCONTRADO.`);
-      }
-    }
-    // --------------------------------------------------
-
-    await Carrito.findOneAndUpdate(
-      { id_usuario: parseInt(userId) },
-      { $set: { productos: [], cupon_aplicado: null } }
-    );
-
-    console.log("✅ Compra Stripe finalizada correctamente.");
-    res.status(200).json({ message: "Compra finalizada y stock actualizado." });
-
-  } catch (error) {
-    console.error("❌ Error confirmando pago Stripe:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
-  }
-});
-
-// --- SUSCRIPCIONES STRIPE ---
-
-const PLANES_SUSCRIPCION = {
-  basica: {
-    nombre: "Plan Básico",
-    precio_mensual: 299.99, 
-    stripe_price_id: "price_1SVKLkEwPHsvqkshI6Uh6Wkz", 
-    caracteristicas: [
-      "Hasta 50 productos",
-      "Dashboard básico", 
-      "Soporte por email",
-      "Reportes mensuales"
-    ]
-  },
-  premium: {
-    nombre: "Plan Profesional",
-    precio_mensual: 599.99, 
-    stripe_price_id: "price_1SVKNtEwPHsvqkshrZNBeotj", 
-    caracteristicas: [
-      "Productos ilimitados",
-      "Dashboard avanzado",
-      "Soporte prioritario",
-      "Reportes en tiempo real",
-      "API access"
-    ]
-  },
-  empresarial: {
-    nombre: "Plan Empresarial", 
-    precio_mensual: 999.99, 
-    stripe_price_id: "price_1SVKOgEwPHsvqkshUtPXATsV", 
-    caracteristicas: [
-      "Todo lo del Premium",
-      "Soporte 24/7",
-      "Usuarios ilimitados",
-      "White-label",
-      "Onboarding personalizado"
-    ]
-  }
-};
-
-app.get("/suscripciones/planes", async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      planes: PLANES_SUSCRIPCION,
-      message: "Planes de suscripción obtenidos correctamente"
-    });
-  } catch (error) {
-    console.error("Error obteniendo planes:", error);
-    res.status(500).json({ 
-      success: false,
-      error: "Error al obtener planes de suscripción" 
-    });
-  }
-});
-
-app.post("/create-subscription-checkout", async (req, res) => {
-  try {
-    const { plan_tipo, userId, userEmail } = req.body;
-    
-    console.log("📋 Creando suscripción para plan:", plan_tipo);
-    console.log("👤 User ID:", userId);
-
-    const plan = PLANES_SUSCRIPCION[plan_tipo];
-    if (!plan) {
-      return res.status(400).json({ 
-        success: false,
-        error: "Plan de suscripción no válido" 
-      });
+    const guestToken = guestResp.data?.token || guestResp.data?.result?.token;
+    if (!guestToken) {
+      console.error("Guest token creation failed:", guestResp.data);
+      return res.status(500).json({ error: "Could not create guest token", detail: guestResp.data });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: plan.stripe_price_id, 
-          quantity: 1,
-        },
-      ],
-      mode: 'subscription',
-      success_url: `http://localhost:5173/suscripciones?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${YOUR_DOMAIN}/suscripciones`,
-      customer_email: userEmail, 
-      metadata: {
-        user_id: userId,
-        plan_tipo: plan_tipo
-      },
-      subscription_data: {
-        metadata: {
-          user_id: userId,
-          plan_tipo: plan_tipo
-        }
-      }
-    });
-
-    console.log("✅ Sesión de suscripción creada:", session.id);
-    
-    res.json({
-      success: true,
-      url: session.url,
-      sessionId: session.id,
-      message: `Checkout para suscripción ${plan.nombre} creado`
-    });
-    
-  } catch (err) {
-    console.error("❌ Error creando sesión de suscripción:", err);
-    res.status(500).json({ 
-      success: false,
-      error: "Error al crear la sesión de suscripción",
-      details: err.message 
-    });
-  }
-});
-
-// 3. MODIFICACIÓN: Verificar prueba de 15 días en el estado de suscripción
-app.get("/suscripcion/estado/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    console.log("🔍 Verificando suscripción para user:", userId);
-
-    // 1. Buscar en Stripe
-    const subscriptions = await stripe.subscriptions.search({
-      query: `metadata['user_id']:'${userId}' AND status:'active'`,
-    });
-
-    if (subscriptions.data.length === 0) {
-        // 2. Si no hay Stripe, buscar prueba local en BD
-        const usuario = await Usuario.findOne({ id_usuario: parseInt(userId) });
-        
-        // Si tiene trial_end y la fecha actual es MENOR a la de vencimiento
-        if (usuario && usuario.trial_end && new Date(usuario.trial_end) > new Date()) {
-             return res.json({
-                success: true,
-                tiene_suscripcion: true,
-                suscripcion: {
-                    id: 'trial_15_dias',
-                    plan: 'prueba', // Debe coincidir con el tipo en el frontend
-                    nombre_plan: '15 DÍAS GRATIS',
-                    estado: 'active',
-                    fecha_inicio: usuario.fecha_reg,
-                    fecha_vencimiento: usuario.trial_end,
-                    precio_mensual: 0,
-                    caracteristicas: ['Prueba gratuita', 'Acceso total']
-                }
-            });
-        }
-
-      return res.json({ 
-        success: true,
-        tiene_suscripcion: false,
-        mensaje: "No tiene suscripción activa" 
-      });
-    }
-
-    const subscription = subscriptions.data[0];
-    const plan_tipo = subscription.metadata.plan_tipo;
-    const plan = PLANES_SUSCRIPCION[plan_tipo];
-
-    res.json({
-      success: true,
-      tiene_suscripcion: true,
-      suscripcion: {
-        id: subscription.id,
-        plan: plan_tipo,
-        nombre_plan: plan.nombre,
-        estado: subscription.status,
-        fecha_inicio: new Date(subscription.current_period_start * 1000),
-        fecha_vencimiento: new Date(subscription.current_period_end * 1000),
-        precio_mensual: plan.precio_mensual / 100,
-        caracteristicas: plan.caracteristicas
-      }
-    });
-
+    return res.json({ token: guestToken });
   } catch (error) {
-    console.error("Error verificando suscripción:", error);
-    res.status(500).json({ 
-      success: false,
-      error: "Error al verificar suscripción" 
-    });
+    console.error("Error /superset-token:", error.response?.data || error.message || error);
+    return res.status(500).json({ error: "Error generating Superset guest token", detail: error.response?.data || error.message });
   }
-});
-
-app.post("/suscripcion/cancelar", async (req, res) => {
-  try {
-    const { userId } = req.body;
-
-    console.log("🗑️  Cancelando suscripción para user:", userId);
-
-    const subscriptions = await stripe.subscriptions.search({
-      query: `metadata['user_id']:'${userId}' AND status:'active'`,
-    });
-
-    if (subscriptions.data.length === 0) {
-      return res.status(404).json({ 
-        success: false,
-        error: "No se encontró suscripción activa" 
-      });
-    }
-
-    const subscription = subscriptions.data[0];
-    
-    const canceledSubscription = await stripe.subscriptions.update(
-      subscription.id,
-      { cancel_at_period_end: true }
-    );
-
-    res.json({
-      success: true,
-      mensaje: "Suscripción cancelada. Terminará al final del periodo actual.",
-      fecha_fin: new Date(canceledSubscription.current_period_end * 1000),
-      suscripcion_id: canceledSubscription.id
-    });
-
-  } catch (error) {
-    console.error("Error cancelando suscripción:", error);
-    res.status(500).json({ 
-      success: false,
-      error: "Error al cancelar suscripción" 
-    });
-  }
-});
-
-app.post("/stripe-webhook", async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error(`❌ Error de webhook: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  switch (event.type) {
-    case 'customer.subscription.created':
-      const subscriptionCreated = event.data.object;
-      console.log('✅ Nueva suscripción creada:', subscriptionCreated.id);
-      break;
-      
-    case 'customer.subscription.updated':
-      const subscriptionUpdated = event.data.object;
-      console.log('📝 Suscripción actualizada:', subscriptionUpdated.id);
-      break;
-      
-    case 'customer.subscription.deleted':
-      const subscriptionDeleted = event.data.object;
-      console.log('🗑️  Suscripción cancelada:', subscriptionDeleted.id);
-      break;
-      
-    default:
-      console.log(`🔔 Evento no manejado: ${event.type}`);
-  }
-
-  res.json({ received: true });
 });
 
 const PORT = process.env.PORT || 3000;
