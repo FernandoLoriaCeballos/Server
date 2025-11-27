@@ -1643,6 +1643,8 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 // --- SUPERNSET GUEST TOKEN (un solo endpoint) ---
+const axios = require('axios'); // Asegúrate de tener axios importado/requerido
+
 const SUPERSET_USERNAME = process.env.SUPERSET_ADMIN_USER || "ctmivett";
 const SUPERSET_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || "impicafresa179";
 const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
@@ -1650,16 +1652,52 @@ const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-
 
 app.get("/superset-token", async (req, res) => {
   try {
-    const response = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
+    // 1. Iniciar sesión de administrador para obtener el token de acceso
+    const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
       username: SUPERSET_USERNAME,
       password: SUPERSET_PASSWORD,
       provider: "db",
     });
 
-    const guestToken = response.data.access_token; // Adjust based on actual response structure
-    res.json({ token: guestToken });
+    const adminAccessToken = loginResponse.data.access_token; // Token del admin para autenticar el POST
+
+    // 2. Crear el payload para el Guest Token
+    const guestTokenPayload = {
+      // Define el usuario invitado (opcional, para RLS o Jinja)
+      user: {
+        username: "embedded_user",
+        first_name: "Embedded",
+        last_name: "User"
+      },
+      // Define los recursos a los que el token dará acceso
+      resources: [{
+        type: "dashboard",
+        id: SUPERSET_RESOURCE_ID // El ID del dashboard
+      }],
+      // Opcional: Reglas de Row-Level Security (RLS)
+      // rls: [
+      //   { "clause": "country = 'Mexico'" }
+      // ]
+    };
+
+    // 3. Solicitar el Guest Token a Superset usando el token del administrador
+    const guestTokenResponse = await axios.post(
+      `${SUPERSET_URL}/api/v1/security/guest_token`,
+      guestTokenPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${adminAccessToken}`, // Autenticación como admin
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const guestToken = guestTokenResponse.data.token; // Superset devuelve el guest token como 'token'
+    res.json({ token: guestToken }); // Devolver el Guest Token al frontend
   } catch (error) {
-    console.error("Error generating guest token:", error);
+    console.error("Error generando guest token:", error.response?.status, error.response?.data || error.message);
+    // Un 401 aquí significa que las credenciales de SUPERSET_ADMIN fallaron
+    // Un 403 significa que el usuario admin no tiene el permiso 'can_grant_guest_token'
     res.status(500).json({ message: "Error generating guest token" });
   }
 });
