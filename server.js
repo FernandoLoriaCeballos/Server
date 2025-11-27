@@ -1681,9 +1681,9 @@ app.get("/superset-token", async (req, res) => {
     const guestTokenPayload = {
       // Define el usuario invitado (opcional, para RLS o Jinja)
       user: {
-        username: "embedded_user",
-        first_name: "Embedded",
-        last_name: "User"
+        username: "sharivett179",
+        first_name: "ivett",
+        last_name: "martinez"
       },
       // Define los recursos a los que el token dará acceso
       resources: [{
