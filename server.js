@@ -1643,9 +1643,6 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 // --- SUPERNSET GUEST TOKEN (un solo endpoint) ---
-const axios = require('axios'); // Asegúrate de tener axios importado/requerido
-
-// Variables de entorno o valores por defecto
 const SUPERSET_USERNAME = process.env.SUPERSET_ADMIN_USER || "ctmivett";
 const SUPERSET_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || "impicafresa179";
 const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
@@ -1665,7 +1662,6 @@ const parseRoles = (rStr) =>
     .filter(Boolean);
 
 
-// Definición del endpoint (asumiendo que esto está dentro de una función de ruta de Express)
 app.get("/superset-token", async (req, res) => {
   try {
     // 1. Iniciar sesión de administrador para obtener el token de acceso
