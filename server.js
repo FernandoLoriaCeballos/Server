@@ -1677,7 +1677,7 @@ app.get("/superset-token", async (req, res) => {
 
     const adminAccessToken = loginResponse.data.access_token; // Token del admin para autenticar el POST
 
-    // 2. Crear el payload para el Guest Token
+    // 2. Crear el payload para el Guest Token (ahora incluye rls: [])
     const guestTokenPayload = {
       // Define el usuario invitado (opcional, para RLS o Jinja)
       user: {
@@ -1691,8 +1691,9 @@ app.get("/superset-token", async (req, res) => {
         id: SUPERSET_RESOURCE_ID // El ID del dashboard
       }],
       // roles que tendrá el guest token (array). Configurable via SUPERSET_GUEST_ROLES
-      current_roles: parseRoles(SUPERSET_GUEST_ROLES)
-      // Opcional: añadir rls aquí si hace falta
+      current_roles: parseRoles(SUPERSET_GUEST_ROLES),
+      // rls requerido por la validación de Superset: enviar array vacío si no aplica
+      rls: []
     };
 
     // 3. Solicitar el Guest Token a Superset usando el token del administrador
