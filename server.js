@@ -1704,7 +1704,7 @@ app.get("/superset-token", async (req, res) => {
         },
       }
     );
-    
+  
     const guestToken = guestTokenResponse.data.token; // Superset devuelve el guest token como 'token'
     res.json({ token: guestToken }); // Devolver el Guest Token al frontend
   } catch (error) {
