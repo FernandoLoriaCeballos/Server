@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
+import os from "os";
 
 dotenv.config(); // Siempre al inicio
 console.log("🔑 Stripe Key cargada:", process.env.STRIPE_SECRET_KEY ? "✅ Sí" : "❌ No");
@@ -47,16 +48,33 @@ app.use(express.static('dist', {
 }));
 
 // --- START: uploads + multer setup ---
-const UPLOADS_BASE = path.join(process.cwd(), "uploads");
-const COMPANY_UPLOADS = path.join(UPLOADS_BASE, "companies");
-const PRODUCT_UPLOADS = path.join(UPLOADS_BASE, "products");
+// Permitir override via env (por ejemplo en producción configurar un bucket o /tmp)
+let UPLOADS_BASE = process.env.UPLOADS_BASE || path.join(process.cwd(), "uploads");
+const COMPANY_UPLOADS = () => path.join(UPLOADS_BASE, "companies");
+const PRODUCT_UPLOADS = () => path.join(UPLOADS_BASE, "products");
 
-// Crear carpetas si no existen
-fs.mkdirSync(COMPANY_UPLOADS, { recursive: true });
-fs.mkdirSync(PRODUCT_UPLOADS, { recursive: true });
+// Intentamos crear las carpetas; si fallamos (p. ej. Vercel /var/task es read-only)
+try {
+  fs.mkdirSync(COMPANY_UPLOADS(), { recursive: true });
+  fs.mkdirSync(PRODUCT_UPLOADS(), { recursive: true });
+} catch (err) {
+  console.warn("⚠️ No se pudo crear uploads en", UPLOADS_BASE, "-> fallback a temp dir:", err.code);
+  const tmpUploads = path.join(os.tmpdir(), "uploads");
+  try {
+    fs.mkdirSync(path.join(tmpUploads, "companies"), { recursive: true });
+    fs.mkdirSync(path.join(tmpUploads, "products"), { recursive: true });
+    UPLOADS_BASE = tmpUploads;
+    console.warn("ℹ️ Usando uploads temporal:", UPLOADS_BASE);
+  } catch (err2) {
+    console.error("❌ No se pudo crear la carpeta temporal para uploads:", err2);
+    // No rompemos el arranque; multer seguirá fallando al subir pero servidor no se cae
+  }
+}
 
-// Servir archivos estáticos
+// Servir archivos estáticos desde el path final elegido
 app.use("/uploads", express.static(UPLOADS_BASE));
+console.log("📁 Uploads path:", UPLOADS_BASE);
+// --- END: uploads + multer setup ---
 
 // ===== FUNCIONES AUXILIARES =====
 const makeFilename = (originalName) => {
@@ -69,7 +87,7 @@ const makeFilename = (originalName) => {
 
 // ===== CONFIGURAR MULTER PARA LOGOS =====
 const companyStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, COMPANY_UPLOADS),
+  destination: (req, file, cb) => cb(null, COMPANY_UPLOADS()),
   filename: (req, file, cb) => cb(null, makeFilename(file.originalname)),
 });
 const uploadCompany = multer({ storage: companyStorage });
@@ -133,7 +151,7 @@ app.post(
 
 // ===== ENDPOINT: SUBIDA DE FOTO DE PRODUCTO (opcional) =====
 const productStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, PRODUCT_UPLOADS),
+  destination: (req, file, cb) => cb(null, PRODUCT_UPLOADS()),
   filename: (req, file, cb) => cb(null, makeFilename(file.originalname)),
 });
 
