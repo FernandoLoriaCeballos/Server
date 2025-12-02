@@ -11,8 +11,7 @@ import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
 import os from "os";
 
-dotenv.config(); // Siempre al inicio
-console.log("🔑 Stripe Key cargada:", process.env.STRIPE_SECRET_KEY ? "✅ Sí" : "❌ No");
+dotenv.config(); // Siempre al inicio;
 
 const app = express();
 app.use(express.json());
@@ -1660,95 +1659,64 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
-// --- SUPERNSET GUEST TOKEN (un solo endpoint) ---
-const SUPERSET_USERNAME = process.env.SUPERSET_ADMIN_USER || "ctmivett";
-const SUPERSET_PASSWORD = process.env.SUPERSET_ADMIN_PASSWORD || "impicafresa179";
-const SUPERSET_URL = process.env.SUPERSET_URL || "http://localhost:8088";
-const SUPERSET_RESOURCE_ID = process.env.SUPERSET_RESOURCE_ID || "9b6e3665-11f8-4e27-8af7-7b132d5f4a55";
-// Leer roles desde env: puede ser "gamma" o "Gamma" u otros, separados por comas.
-// Ejemplo: SUPERSET_GUEST_ROLES=Gamma,Public
-const SUPERSET_GUEST_ROLES = process.env.SUPERSET_GUEST_ROLES || "Gamma"; 
-
-/**
- * Parsea una cadena de roles separada por comas en un array de strings.
- * Ejemplo: "Admin, Public" -> ["Admin", "Public"]
- */
-const parseRoles = (rStr) =>
-  String(rStr)
-    .split(",")
-    .map((r) => r.trim())
-    .filter(Boolean);
-
 
 app.get("/superset-token", async (req, res) => {
   try {
-
-    // 1. Iniciar sesión de administrador para obtener el token de acceso
+    // 1. Login admin
     const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
       username: SUPERSET_USERNAME,
       password: SUPERSET_PASSWORD,
       provider: "db",
     });
 
-    const adminAccessToken = loginResponse.data.access_token; // Token del admin para autenticar el POST
+    const adminAccessToken = loginResponse.data.access_token;
 
-    // 2. Crear el payload para el Guest Token (ahora incluye rls: [])
+    // 2. Guest token payload
     const guestTokenPayload = {
-      // Define el usuario invitado (opcional, para RLS o Jinja)
       user: {
-        username: "sharivett179",
-        first_name: "ivett",
-        last_name: "martinez"
+        username: "guest_user",
+        first_name: "Guest",
+        last_name: "User",
       },
-      // Define los recursos a los que el token dará acceso
-      resources: [{
-        type: "dashboard",
-        id: SUPERSET_RESOURCE_ID // El ID del dashboard
-      }],
-      // roles que tendrá el guest token (array). Configurable via SUPERSET_GUEST_ROLES
+      resources: [
+        {
+          type: "dashboard",
+          id: SUPERSET_RESOURCE_ID,
+        },
+      ],
+      // roles desde env
       current_roles: parseRoles(SUPERSET_GUEST_ROLES),
-      // rls requerido por la validación de Superset: enviar array vacío si no aplica
-      rls: []
+      rls: [],
     };
 
-    // 3. Solicitar el Guest Token a Superset usando el token del administrador
+    // 3. Generate guest token
     const guestTokenResponse = await axios.post(
       `${SUPERSET_URL}/api/v1/security/guest_token`,
       guestTokenPayload,
       {
         headers: {
-          Authorization: `Bearer ${adminAccessToken}`, // Autenticación como admin
+          Authorization: `Bearer ${adminAccessToken}`,
           "Content-Type": "application/json",
         },
       }
     );
-  
-    const guestToken = guestTokenResponse.data.token; // Superset devuelve el guest token como 'token'
-    res.json({ token: guestToken }); // Devolver el Guest Token al frontend
+
+    res.json({ token: guestTokenResponse.data.token });
+
   } catch (error) {
-    // Manejo de errores detallado (útil para la depuración)
-    let status = error.response?.status || 500;
-    let message = "Error generating guest token";
-    let details = error.response?.data || error.message;
+    console.error("ERROR GENERATING GUEST TOKEN:", {
+      status: error.response?.status,
+      data: error.response?.data,
+    });
 
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-      message = `Connection to Superset failed: ${error.code}. Is Superset running at ${SUPERSET_URL}?`;
-      details = error.message;
-      status = 503; // Service Unavailable
-    } else if (error.response?.status === 401) {
-      message = "Admin Login Failed (401). Check SUPERSET_ADMIN_USER/PASSWORD.";
-    } else if (error.response?.status === 403) {
-      message = "Guest Token Forbidden (403). Check if admin user has 'can_grant_guest_token' permission.";
-    }
-
-    console.error(`--- [ERROR] Guest Token (${status}) ---`);
-    console.error("Mensaje:", message);
-    console.error("Detalles:", details);
-    console.error("---------------------------------------");
-
-    res.status(status).json({ message: message, details: details });
+    res.status(500).json({
+      message: "Error generating guest token",
+      details: error.response?.data || error.message,
+    });
   }
 });
+
+
 
 const PORT = process.env.PORT || 3000;
 
