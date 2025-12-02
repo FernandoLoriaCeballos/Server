@@ -1674,9 +1674,7 @@ app.get("/superset-token", async (req, res) => {
     // 2. Guest token payload
     const guestTokenPayload = {
       user: {
-        username: "guest_user",
-        first_name: "Guest",
-        last_name: "User",
+        username: "sharivett179"
       },
       resources: [
         {
