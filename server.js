@@ -20,6 +20,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://reviere-nube.vercel.app',
+    'server-pi-black.vercel.app',
     '*' // Temporal
   ],
   credentials: true,
@@ -1665,8 +1666,8 @@ app.get("/superset-token", async (req, res) => {
   try {
     // 1. Login admin
     const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
-      username: SUPERSET_USERNAME,
-      password: SUPERSET_PASSWORD,
+      username: SUPERSET_ADMIN_USER,
+      password: SUPERSET_ADMIN_PASSWORD,
       provider: "db",
     });
 
@@ -1714,8 +1715,6 @@ app.get("/superset-token", async (req, res) => {
     });
   }
 });
-
-
 
 const PORT = process.env.PORT || 3000;
 
