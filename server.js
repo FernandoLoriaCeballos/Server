@@ -28,7 +28,8 @@ app.use(cors({
 
 // Inicializar Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const YOUR_DOMAIN = "http://localhost:5173"; 
+// Usa la variable de Vercel en producción, o localhost en tu PC
+const YOUR_DOMAIN = process.env.CLIENT_URL || "http://localhost:5173";
 
 const generarToken = (usuario) => {
   return jwt.sign(usuario, process.env.JWT_SECRET, {
