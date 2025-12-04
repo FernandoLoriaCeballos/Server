@@ -30,7 +30,7 @@ app.use(cors({
 // Inicializar Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Usa la variable de Vercel en producción, o localhost en tu PC
-const YOUR_DOMAIN = process.env.CLIENT_URL || "http://localhost:5173";
+const baseUrl = process.env.CLIENT_URL || "http://localhost:5173";
 
 app.post("/create-checkout-session", async (req, res) => {
   try {
@@ -59,8 +59,8 @@ app.post("/create-checkout-session", async (req, res) => {
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",
-      success_url: `${YOUR_DOMAIN}/landing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${YOUR_DOMAIN}/landing?canceled=true`,
+      success_url: `${baseUrl}/landing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/cancel`,
     });
 
     res.json({ url: session.url });
