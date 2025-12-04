@@ -933,6 +933,37 @@ app.delete("/empresas/:id", async (req, res) => {
   }
 });
 
+app.post("/finalizar-compra-stripe", async (req, res) => {
+  const { id_usuario } = req.body;
+
+  try {
+    // 1. Buscamos el carrito del usuario
+    const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
+    
+    if (!carrito || carrito.productos.length === 0) {
+      return res.status(400).json({ message: "El carrito ya está vacío o no existe" });
+    }
+
+    
+    for (const item of carrito.productos) {
+      await Producto.findOneAndUpdate(
+        { id_producto: item.id_producto },
+        { $inc: { stock: -item.cantidad } } // Restamos la cantidad comprada
+      );
+    }
+
+    carrito.productos = [];
+    carrito.cupon_aplicado = null;
+    await carrito.save();
+
+    res.status(200).json({ message: "Compra finalizada: Stock actualizado y carrito vaciado." });
+
+  } catch (error) {
+    console.error("Error al finalizar compra Stripe:", error);
+    res.status(500).json({ message: "Error en el servidor al procesar la compra" });
+  }
+});
+
 app.get("/empleados/empresa/:empresa_id", async (req, res) => {
   const { empresa_id } = req.params;
 
