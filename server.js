@@ -30,7 +30,7 @@ app.use(cors({
 // Inicializar Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Usa la variable de Vercel en producción, o localhost en tu PC
-const baseUrl = process.env.CLIENT_URL || "http://localhost:5173";
+const baseUrl = "https://reviere-nube.vercel.app";
 
 app.post("/create-checkout-session", async (req, res) => {
   try {
