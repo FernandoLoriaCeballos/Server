@@ -32,6 +32,44 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Usa la variable de Vercel en producción, o localhost en tu PC
 const YOUR_DOMAIN = process.env.CLIENT_URL || "http://localhost:5173";
 
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const { productos } = req.body; 
+
+    // Validación básica
+    if (!productos || productos.length === 0) {
+      return res.status(400).json({ error: "No hay productos para procesar" });
+    }
+
+    const lineItems = productos.map((item) => {
+      return {
+        price_data: {
+          currency: "mxn",
+          product_data: {
+            name: item.nombre,
+            description: item.descripcion || "Sin descripción",
+          },
+          unit_amount: Math.round(item.precio * 100), // Stripe usa centavos
+        },
+        quantity: item.cantidad,
+      };
+    });
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: lineItems,
+      mode: "payment",
+      success_url: `${YOUR_DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${YOUR_DOMAIN}/cancel`,
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error("Error en Stripe:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const generarToken = (usuario) => {
   return jwt.sign(usuario, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES || "1h",
