@@ -941,7 +941,7 @@ app.post("/finalizar-compra-stripe", async (req, res) => {
     const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
     
     if (!carrito || carrito.productos.length === 0) {
-      return res.status(400).json({ message: "El carrito ya está vacío o no existe" });
+      return res.status(200).json({ message: "Compra realizada con éxito " });
     }
 
     
