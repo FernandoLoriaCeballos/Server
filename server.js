@@ -12,7 +12,6 @@ import Stripe from "stripe"; // Importación movida arriba para orden
 import os from "os";
 
 dotenv.config(); // Siempre al inicio;
-
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
@@ -21,6 +20,7 @@ app.use(cors({
     'http://localhost:5173',
     'https://reviere-nube.vercel.app',
     'server-pi-black.vercel.app',
+    'https://notebooks-adapters-disciplines-threats.trycloudflare.com',
     '*' // Temporal
   ],
   credentials: true,
@@ -1731,49 +1731,122 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 
+let cachedAdminAccessToken = null;
+
+// Función para obtener el token de administrador
+async function getAdminToken() {
+  try {
+    // 1. Si ya existe, úsalo
+    if (cachedAdminAccessToken) {
+      return cachedAdminAccessToken;
+    }
+
+    // 2. Si no existe, hacer login
+    const loginResponse = await axios.post(
+      `${process.env.SUPERSET_URL}/api/v1/security/login`,
+      {
+        username: process.env.SUPERSET_ADMIN_USER,
+        password: process.env.SUPERSET_ADMIN_PASSWORD,
+        provider: "db",
+      }
+    );
+
+    const token = loginResponse.data.access_token;
+
+    // Guardarlo en memoria
+    cachedAdminAccessToken = token;
+
+    console.log("🔐 Nuevo admin token generado.");
+
+    return token;
+
+  } catch (err) {
+    console.error("❌ Error generando admin token:", err.response?.data || err);
+    throw err;
+  }
+}
+
+
+// ============================
+// PARSE ROLES
+// ============================
+function parseRoles(rolesString) {
+  if (!rolesString) return [];
+  return rolesString
+    .split(",")
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0);
+}
+
+
+
+// ============================
+// ENDPOINT: /superset-token
+// ============================
 app.get("/superset-token", async (req, res) => {
   try {
-    // 1. Login admin
-    const loginResponse = await axios.post(`${SUPERSET_URL}/api/v1/security/login`, {
-      username: SUPERSET_ADMIN_USER,
-      password: SUPERSET_ADMIN_PASSWORD,
-      provider: "db",
-    });
+    // Obtener token admin (desde caché o login)
+    let adminAccessToken = await getAdminToken();
 
-    const adminAccessToken = loginResponse.data.access_token;
+    console.log("🔑 Admin token (inicio):", adminAccessToken.substring(0, 20) + "...");
 
-    // 2. Guest token payload
+    // Armar payload del guest
     const guestTokenPayload = {
-      user: {
-        username: "sharivett179"
-      },
+      user: { username: "sharivett179" },
       resources: [
         {
           type: "dashboard",
-          id: SUPERSET_RESOURCE_ID,
+          id: process.env.SUPERSET_RESOURCE_ID,
         },
       ],
-      // roles desde env
-      current_roles: parseRoles(SUPERSET_GUEST_ROLES),
+      current_roles: parseRoles(process.env.SUPERSET_GUEST_ROLES),
       rls: [],
     };
 
-    // 3. Generate guest token
-    const guestTokenResponse = await axios.post(
-      `${SUPERSET_URL}/api/v1/security/guest_token`,
-      guestTokenPayload,
-      {
-        headers: {
-          Authorization: `Bearer ${adminAccessToken}`,
-          "Content-Type": "application/json",
-        },
+    // Intentar generar guest token
+    let guestTokenResponse;
+
+    try {
+      guestTokenResponse = await axios.post(
+        `${process.env.SUPERSET_URL}/api/v1/security/guest_token`,
+        guestTokenPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${adminAccessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    } catch (error) {
+      // SI EL TOKEN DE ADMIN EXPIRÓ (401) → RENOVARLO Y REINTENTAR UNA VEZ
+      if (error.response?.status === 401) {
+        console.warn("⚠️ Admin token expirado → Generando uno nuevo...");
+        cachedAdminAccessToken = null; // limpiar
+        adminAccessToken = await getAdminToken(); // regenerar
+
+        // Reintentar petición
+        guestTokenResponse = await axios.post(
+          `${process.env.SUPERSET_URL}/api/v1/security/guest_token`,
+          guestTokenPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${adminAccessToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      } else {
+        throw error;
       }
-    );
+    }
+
+    console.log("🎟 Guest token generado.");
+    console.log("📦 Payload:", guestTokenPayload);
 
     res.json({ token: guestTokenResponse.data.token });
 
   } catch (error) {
-    console.error("ERROR GENERATING GUEST TOKEN:", {
+    console.error("❌ ERROR GENERATING GUEST TOKEN:", {
       status: error.response?.status,
       data: error.response?.data,
     });
