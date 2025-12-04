@@ -32,38 +32,41 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Usa la variable de Vercel en producción, o localhost en tu PC
 const baseUrl = "https://reviere-nube.vercel.app";
 
-app.post("/finalizar-compra-stripe", async (req, res) => {
-  const { id_usuario } = req.body;
-
+app.post("/create-checkout-session", async (req, res) => {
   try {
-    // 1. Buscamos el carrito del usuario
-    const carrito = await Carrito.findOne({ id_usuario: parseInt(id_usuario) });
-    
-    if (!carrito || carrito.productos.length === 0) {
-      return res.status(400).json({ message: "El carrito ya está vacío o no existe" });
+    const { productos } = req.body; 
+
+    // Validación básica
+    if (!productos || productos.length === 0) {
+      return res.status(400).json({ error: "No hay productos para procesar" });
     }
 
-    // 2. Restar el Stock de los productos (Importante para evitar sobreventas)
-    for (const item of carrito.productos) {
-      await Producto.findOneAndUpdate(
-        { id_producto: item.id_producto },
-        { $inc: { stock: -item.cantidad } } // Restamos la cantidad comprada
-      );
-    }
+    const lineItems = productos.map((item) => {
+      return {
+        price_data: {
+          currency: "mxn",
+          product_data: {
+            name: item.nombre,
+            description: item.descripcion || "Sin descripción",
+          },
+          unit_amount: Math.round(item.precio * 100), // Stripe usa centavos
+        },
+        quantity: item.cantidad,
+      };
+    });
 
-    // 3. Generar Recibo (Opcional: Si quieres guardar historial de ventas de Stripe)
-    // Puedes copiar la lógica de tu ruta POST /recibos aquí si deseas guardar el registro en BD.
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: lineItems,
+      mode: "payment",
+      success_url: `${baseUrl}/landing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/cancel`,
+    });
 
-    // 4. Vaciar el Carrito
-    carrito.productos = [];
-    carrito.cupon_aplicado = null;
-    await carrito.save();
-
-    res.status(200).json({ message: "Compra finalizada: Stock actualizado y carrito vaciado." });
-
+    res.json({ url: session.url });
   } catch (error) {
-    console.error("Error al finalizar compra Stripe:", error);
-    res.status(500).json({ message: "Error en el servidor al procesar la compra" });
+    console.error("Error en Stripe:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
