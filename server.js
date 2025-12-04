@@ -1766,10 +1766,6 @@ async function getAdminToken() {
   }
 }
 
-
-// ============================
-// PARSE ROLES
-// ============================
 function parseRoles(rolesString) {
   if (!rolesString) return [];
   return rolesString
@@ -1788,11 +1784,24 @@ app.get("/superset-token", async (req, res) => {
     // Obtener token admin (desde caché o login)
     let adminAccessToken = await getAdminToken();
 
-    console.log("🔑 Admin token (inicio):", adminAccessToken.substring(0, 20) + "...");
+    // 1. Obtener CSRF token usando el token de admin
+    const csrfResponse = await axios.get(
+      `${process.env.SUPERSET_URL}/api/v1/security/csrf_token`,
+      {
+        headers: {
+          Authorization: `Bearer ${adminAccessToken}`,
+        },
+      }
+    );
+    const csrfToken = csrfResponse.data.result;
 
     // Armar payload del guest
     const guestTokenPayload = {
-      user: { username: "sharivett179" },
+      user: {
+        username: "guest_user",
+        first_name: "Guest",
+        last_name: "User",
+      },
       resources: [
         {
           type: "dashboard",
@@ -1814,15 +1823,26 @@ app.get("/superset-token", async (req, res) => {
           headers: {
             Authorization: `Bearer ${adminAccessToken}`,
             "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken, // <-- CSRF token agregado
           },
         }
       );
     } catch (error) {
       // SI EL TOKEN DE ADMIN EXPIRÓ (401) → RENOVARLO Y REINTENTAR UNA VEZ
       if (error.response?.status === 401) {
-        console.warn("⚠️ Admin token expirado → Generando uno nuevo...");
         cachedAdminAccessToken = null; // limpiar
         adminAccessToken = await getAdminToken(); // regenerar
+
+        // Obtener nuevo CSRF token
+        const csrfResponse2 = await axios.get(
+          `${process.env.SUPERSET_URL}/api/v1/security/csrf_token`,
+          {
+            headers: {
+              Authorization: `Bearer ${adminAccessToken}`,
+            },
+          }
+        );
+        const csrfToken2 = csrfResponse2.data.result;
 
         // Reintentar petición
         guestTokenResponse = await axios.post(
@@ -1832,6 +1852,7 @@ app.get("/superset-token", async (req, res) => {
             headers: {
               Authorization: `Bearer ${adminAccessToken}`,
               "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken2,
             },
           }
         );
@@ -1840,17 +1861,9 @@ app.get("/superset-token", async (req, res) => {
       }
     }
 
-    console.log("🎟 Guest token generado.");
-    console.log("📦 Payload:", guestTokenPayload);
-
     res.json({ token: guestTokenResponse.data.token });
 
   } catch (error) {
-    console.error("❌ ERROR GENERATING GUEST TOKEN:", {
-      status: error.response?.status,
-      data: error.response?.data,
-    });
-
     res.status(500).json({
       message: "Error generating guest token",
       details: error.response?.data || error.message,
