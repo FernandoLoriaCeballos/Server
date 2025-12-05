@@ -1735,7 +1735,14 @@ app.post("/auth/google/token", async (req, res) => {
 // ===============================
 // API EMBEDDED TOKEN PRESET (JWT firmado con clave privada)
 // ===============================
-const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const PRIVATE_KEY = (() => {
+  let key = process.env.PRESET_PRIVATE_KEY;
+  if (!key) return "";
+  if (key.includes("\\n")) key = key.replace(/\\n/g, "\n");
+  key = key.trim().replace(/^"+|"+$/g, "");
+  return key;
+})();
+
 const PRESET_KEY_ID = process.env.PRESET_KEY_ID;
 const PRESET_EMBED_ID = process.env.PRESET_EMBED_ID;
 
@@ -1750,9 +1757,12 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
     if (!PRESET_KEY_ID) {
       throw new Error("PRESET_KEY_ID no está definida.");
     }
-
-    // Debug: muestra los primeros y últimos caracteres de la clave para verificar formato
-    // console.log("PRIVATE_KEY:", PRIVATE_KEY.slice(0, 30), "...", PRIVATE_KEY.slice(-30));
+    if (
+      !PRIVATE_KEY.startsWith("-----BEGIN PRIVATE KEY-----") ||
+      !PRIVATE_KEY.trim().endsWith("-----END PRIVATE KEY-----")
+    ) {
+      throw new Error("La clave privada no tiene el formato PEM correcto.");
+    }
 
     const now = Math.floor(Date.now() / 1000);
 
@@ -1769,7 +1779,6 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
       ],
     };
 
-    // Asegúrate de que la clave tenga los encabezados y saltos de línea correctos
     const token = jwt.sign(payload, PRIVATE_KEY, {
       algorithm: "RS256",
       keyid: PRESET_KEY_ID,
