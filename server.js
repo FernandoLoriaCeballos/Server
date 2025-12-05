@@ -1733,8 +1733,13 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 // ===============================
-// API EMBEDDED TOKEN PRESET (JWT firmado con clave privada)
+// API EMBEDDED TOKEN PRESET (adaptado a tu formato)
 // ===============================
+const PRESET_DOMAIN = process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io";
+const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "eb982890-e494-42f1-8811-98580ce2be0b";
+const WORKSPACE_ID = process.env.PRESET_WORKSPACE_ID || "025175db";
+
+// Usa la clave privada desde variable de entorno
 const PRIVATE_KEY = (() => {
   let key = process.env.PRESET_PRIVATE_KEY;
   if (!key) return "";
@@ -1743,19 +1748,10 @@ const PRIVATE_KEY = (() => {
   return key;
 })();
 
-const PRESET_KEY_ID = process.env.PRESET_KEY_ID;
-const PRESET_EMBED_ID = process.env.PRESET_EMBED_ID;
-
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
     if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
       throw new Error("PRESET_PRIVATE_KEY no está definida.");
-    }
-    if (!PRESET_EMBED_ID) {
-      throw new Error("PRESET_EMBED_ID no está definida.");
-    }
-    if (!PRESET_KEY_ID) {
-      throw new Error("PRESET_KEY_ID no está definida.");
     }
     if (
       !PRIVATE_KEY.startsWith("-----BEGIN PRIVATE KEY-----") ||
@@ -1763,28 +1759,35 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
     ) {
       throw new Error("La clave privada no tiene el formato PEM correcto.");
     }
+    if (!DASHBOARD_ID) {
+      throw new Error("PRESET_EMBED_ID (dashboard id) no está definida.");
+    }
 
-    const now = Math.floor(Date.now() / 1000);
-
+    // Payload para el JWT embed
     const payload = {
-      iss: "preset",
-      sub: "embed-user",
-      iat: now,
-      exp: now + 60 * 5,
-      rls: [
+      resources: [
         {
-          rid: PRESET_EMBED_ID,
-          rtp: "dashboard",
+          type: "dashboard",
+          id: DASHBOARD_ID,
         },
       ],
+      rls: [],
+      user: {
+        username: "guest_user",
+      },
     };
 
     const token = jwt.sign(payload, PRIVATE_KEY, {
       algorithm: "RS256",
-      keyid: PRESET_KEY_ID,
+      expiresIn: "5m",
     });
 
-    res.json({ token });
+    const embedUrl = `${PRESET_DOMAIN}/superset/dashboard/${DASHBOARD_ID}/?standalone=1`;
+
+    res.json({
+      token,
+      url: embedUrl,
+    });
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
