@@ -12,6 +12,7 @@ import Stripe from "stripe"; // Importación movida arriba para orden
 import os from "os";
 import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
+import bodyParser from "body-parser";
 
 dotenv.config(); // Siempre al inicio;
 const app = express();
@@ -28,6 +29,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
+app.use(bodyParser.json());
 
 // Inicializar Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -1736,7 +1738,7 @@ app.post("/auth/google/token", async (req, res) => {
 // API EMBEDDED TOKEN PRESET (adaptado y verificado)
 // ===============================
 const PRESET_DOMAIN = process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io";
-const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "906c50ed-9eea-4d92-b728-378bb7585bef";
+const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "9eaf168a-2729-403e-81aa-eb6f7c488c9e";
 const PRIVATE_KEY = (() => {
   let key = process.env.PRESET_PRIVATE_KEY;
   if (!key) return "";
@@ -1780,6 +1782,83 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ===============================
+// POST para generar usuario guest y obtener guest token desde Preset Manager API
+// ===============================
+app.post("/api/v1/preset/guest-token", async (req, res) => {
+  try {
+    const {
+      api_name = process.env.PRESET_API_NAME,
+      api_secret = process.env.PRESET_API_SECRET,
+      team_name = process.env.PRESET_TEAM_NAME,
+      workspace_name = process.env.PRESET_WORKSPACE_NAME,
+      dashboard_id = process.env.PRESET_EMBED_ID,
+      username = "guest_user",
+      first_name = "Guest",
+      last_name = "User"
+    } = req.body;
+
+    // 1. Autenticación con Preset Manager API
+    const auth_payload = {
+      name: api_name,
+      secret: api_secret
+    };
+
+    const auth_response = await axios.post(
+      "https://api.app.preset.io/v1/auth/",
+      auth_payload,
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    const preset_jwt_token = auth_response.data?.payload?.access_token;
+    if (!preset_jwt_token) {
+      return res.status(401).json({ error: "No se pudo obtener el token de autenticación de Preset." });
+    }
+
+    // 2. Solicitar el guest token
+    const embedded_payload = {
+      user: {
+        username,
+        first_name,
+        last_name
+      },
+      resources: [{
+        type: "dashboard",
+        id: dashboard_id
+      }],
+      rls: []
+    };
+
+    const embedded_response = await axios.post(
+      `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
+      embedded_payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${preset_jwt_token}`
+        }
+      }
+    );
+
+    const guest_token = embedded_response.data?.data?.payload?.token;
+    if (!guest_token) {
+      return res.status(400).json({ error: "No se pudo obtener el guest token de Preset." });
+    }
+
+    // URL de embed
+    const embedUrl = `${process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io"}/superset/dashboard/${dashboard_id}/?standalone=1`;
+
+    res.json({
+      token: guest_token,
+      url: embedUrl,
+      expires_in: 300 // Preset guest tokens suelen durar 5 minutos
+    });
+  } catch (err) {
+    console.error("Error al generar guest token:", err?.response?.data || err.message);
+    res.status(400).json({ error: err?.response?.data || err.message });
   }
 });
 
