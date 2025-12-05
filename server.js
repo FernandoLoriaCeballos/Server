@@ -1735,10 +1735,14 @@ app.post("/auth/google/token", async (req, res) => {
 // GENERAR TOKEN EMBEBIDO PARA PRESET CLOUD (RSA PEM)
 // ===============================
 // Lee la clave privada desde variable de entorno PRESET_PRIVATE_KEY
-const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY;
+const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
 app.get("/api/v1/preset/embedded-token/", async (req, res) => {
   try {
+    if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
+      throw new Error("La variable PRESET_PRIVATE_KEY no está definida o está vacía.");
+    }
+
     const dashboardId = process.env.PRESET_EMBED_ID;
     const now = Math.floor(Date.now() / 1000);
 
