@@ -21,8 +21,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://reviere-nube.vercel.app',
-    'server-pi-black.vercel.app',
-    'https://notebooks-adapters-disciplines-threats.trycloudflare.com',
+    'https://025175db.us2a.app.preset.io',
+    'https://server-pi-black.vercel.app',
     '*' // Temporal
   ],
   credentials: true,
