@@ -1843,6 +1843,13 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       }
     );
 
+    // --- VALIDACIÓN DE AUTORIZACIÓN ---
+    // Si la respuesta contiene error de autorización, responde 401
+    if (embedded_response.data?.error?.code === "NOT_AUTHORIZED" ||
+        embedded_response.data?.error?.message?.toLowerCase().includes("not authorized")) {
+      return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
+    }
+
     const guest_token = embedded_response.data?.data?.payload?.token;
     if (!guest_token) {
       return res.status(400).json({ error: "No se pudo obtener el guest token de Preset." });
@@ -1857,6 +1864,11 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       expires_in: 300 // Preset guest tokens suelen durar 5 minutos
     });
   } catch (err) {
+    // Si el error es de autorización, responde 401
+    if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
+        (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
+      return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
+    }
     console.error("Error al generar guest token:", err?.response?.data || err.message);
     res.status(400).json({ error: err?.response?.data || err.message });
   }
