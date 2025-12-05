@@ -1747,19 +1747,6 @@ const PRIVATE_KEY = (() => {
 
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
-    if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
-      throw new Error("PRESET_PRIVATE_KEY no está definida.");
-    }
-    if (
-      !PRIVATE_KEY.startsWith("-----BEGIN PRIVATE KEY-----") ||
-      !PRIVATE_KEY.trim().endsWith("-----END PRIVATE KEY-----")
-    ) {
-      throw new Error("La clave privada no tiene el formato PEM correcto.");
-    }
-    if (!DASHBOARD_ID) {
-      throw new Error("PRESET_EMBED_ID (dashboard id) no está definida.");
-    }
-
     // Duración del token: 5 minutos (300 segundos)
     const expiresInSeconds = 300;
 
@@ -1782,13 +1769,13 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
       expiresIn: expiresInSeconds,
     });
 
-    // URL de embed para el dashboard
+    // URL de embed correcta (NO uses /manage)
     const embedUrl = `${PRESET_DOMAIN}/superset/dashboard/${DASHBOARD_ID}/?standalone=1`;
 
     res.json({
       token,
       url: embedUrl,
-      expires_in: expiresInSeconds // Para que el frontend sepa cuándo renovar
+      expires_in: expiresInSeconds
     });
   } catch (err) {
     console.error(err);
