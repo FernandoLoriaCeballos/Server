@@ -1735,8 +1735,15 @@ app.post("/auth/google/token", async (req, res) => {
 // --- API EMBEDDED TOKEN VIA PRESET CLOUD ---
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
+    // Debug: imprime las variables para verificar que están correctas
+    console.log("PRESET_DOMAIN:", process.env.PRESET_DOMAIN);
+    console.log("PRESET_API_TOKEN_NAME:", process.env.PRESET_API_TOKEN_NAME);
+    console.log("PRESET_API_TOKEN_SECRET:", !!process.env.PRESET_API_TOKEN_SECRET);
+    console.log("PRESET_EMBED_ID:", process.env.PRESET_EMBED_ID);
+
+    const url = `${process.env.PRESET_DOMAIN}/api/v1/guest_token/`;
     const resp = await fetch(
-      `${process.env.PRESET_DOMAIN}/api/v1/guest_token/`,
+      url,
       {
         method: "POST",
         headers: {
@@ -1758,7 +1765,13 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
     if (!resp.ok) {
       const errorText = await resp.text();
       console.log("Preset error:", errorText);
-      return res.status(500).json({ error: "Error from preset", details: errorText });
+      // Devuelve el status y el URL para depuración
+      return res.status(500).json({
+        error: "Error from preset",
+        status: resp.status,
+        url,
+        details: errorText
+      });
     }
 
     const data = await resp.json();
