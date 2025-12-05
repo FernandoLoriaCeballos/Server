@@ -1732,54 +1732,50 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
-// --- API EMBEDDED TOKEN VIA PRESET CLOUD ---
+// ===============================
+// API EMBEDDED TOKEN PRESET (JWT firmado con clave privada)
+// ===============================
+PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
+PRESET_KEY_ID = process.env.PRESET_KEY_ID;
+
+const PRESET_EMBED_ID = process.env.PRESET_EMBED_ID;
+
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
-    // Debug: imprime las variables para verificar que están correctas
-    console.log("PRESET_DOMAIN:", process.env.PRESET_DOMAIN);
-    console.log("PRESET_API_TOKEN_NAME:", process.env.PRESET_API_TOKEN_NAME);
-    console.log("PRESET_API_TOKEN_SECRET:", !!process.env.PRESET_API_TOKEN_SECRET);
-    console.log("PRESET_EMBED_ID:", process.env.PRESET_EMBED_ID);
-
-    const url = `${process.env.PRESET_DOMAIN}/api/v1/guest_token/`;
-    const resp = await fetch(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `ApiKey ${process.env.PRESET_API_TOKEN_NAME}:${process.env.PRESET_API_TOKEN_SECRET}`
-        },
-        body: JSON.stringify({
-          resources: [
-            {
-              type: "dashboard",
-              id: process.env.PRESET_EMBED_ID
-            }
-          ],
-          rls: []
-        })
-      }
-    );
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.log("Preset error:", errorText);
-      // Devuelve el status y el URL para depuración
-      return res.status(500).json({
-        error: "Error from preset",
-        status: resp.status,
-        url,
-        details: errorText
-      });
+    if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
+      throw new Error("PRESET_PRIVATE_KEY no está definida.");
+    }
+    if (!PRESET_EMBED_ID) {
+      throw new Error("PRESET_EMBED_ID no está definida.");
+    }
+    if (!PRESET_KEY_ID) {
+      throw new Error("PRESET_KEY_ID no está definida.");
     }
 
-    const data = await resp.json();
-    return res.json({ token: data.token });
+    const now = Math.floor(Date.now() / 1000);
 
-  } catch (error) {
-    console.error("Server error:", error);
-    return res.status(500).json({ error: "Server error", details: error.message });
+    const payload = {
+      iss: "preset",
+      sub: "embed-user",
+      iat: now,
+      exp: now + 60 * 5,
+      rls: [
+        {
+          rid: PRESET_EMBED_ID,
+          rtp: "dashboard",
+        },
+      ],
+    };
+
+    const token = jwt.sign(payload, PRIVATE_KEY, {
+      algorithm: "RS256",
+      keyid: PRESET_KEY_ID,
+    });
+
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message });
   }
 });
 
