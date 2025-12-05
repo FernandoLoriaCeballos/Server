@@ -11,6 +11,7 @@ import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
 import os from "os";
 import jwt from "jsonwebtoken";
+import fetch from "node-fetch";
 
 dotenv.config(); // Siempre al inicio;
 const app = express();
@@ -1734,7 +1735,7 @@ app.post("/auth/google/token", async (req, res) => {
 // --- API EMBEDDED TOKEN VIA PRESET CLOUD ---
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
-    const resp = await axios(
+    const resp = await fetch(
       `${process.env.PRESET_DOMAIN}/api/v1/guest_token/`,
       {
         method: "POST",
@@ -1765,11 +1766,9 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
 
   } catch (error) {
     console.error("Server error:", error);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error", details: error.message });
   }
 });
-
-app.use(embeddedRouter);
 
 // --- INICIAR SERVIDOR ---
 const PORT = process.env.PORT || 3000;

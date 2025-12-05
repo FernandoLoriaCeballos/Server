@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.8.3",
     "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
     "stripe": "^19.2.1"
   }
 }
