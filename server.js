@@ -1734,11 +1734,16 @@ app.post("/auth/google/token", async (req, res) => {
 // ===============================
 // ROUTER PARA TOKEN EMBEBIDO PRESET CLOUD
 // ===============================
-const embeddedRouter = express.Router();
-
 const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, "\n");
 const EMBED_ID = process.env.PRESET_EMBED_ID;
 const KEY_ID = process.env.PRESET_KEY_ID;
+
+// Debug: imprime las variables para verificar si están cargadas correctamente
+console.log("PRESET_PRIVATE_KEY loaded:", !!PRIVATE_KEY);
+console.log("PRESET_EMBED_ID:", EMBED_ID);
+console.log("PRESET_KEY_ID:", KEY_ID);
+
+const embeddedRouter = express.Router();
 
 embeddedRouter.get("/api/v1/preset/embedded-token", async (req, res) => {
   try {
