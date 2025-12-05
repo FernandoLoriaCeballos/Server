@@ -1734,13 +1734,12 @@ app.post("/auth/google/token", async (req, res) => {
 // ===============================
 // GENERAR TOKEN EMBEBIDO PARA PRESET CLOUD (RSA PEM)
 // ===============================
-// Lee la clave privada desde variable de entorno PRESET_PRIVATE_KEY
-const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const PUBLIC_KEY = process.env.PRESET_PUBLIC_KEY?.replace(/\\n/g, '\n');
 
 app.get("/api/v1/preset/embedded-token/", async (req, res) => {
   try {
-    if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
-      throw new Error("La variable PRESET_PRIVATE_KEY no está definida o está vacía.");
+    if (!PUBLIC_KEY || PUBLIC_KEY.trim().length === 0) {
+      throw new Error("La variable PRESET_PUBLIC_KEY no está definida o está vacía.");
     }
 
     const dashboardId = process.env.PRESET_EMBED_ID;
@@ -1759,12 +1758,23 @@ app.get("/api/v1/preset/embedded-token/", async (req, res) => {
       ]
     };
 
-    const token = jwt.sign(payload, PRIVATE_KEY, {
-      algorithm: "RS256",
-      keyid: process.env.PRESET_KEY_ID
-    });
+    // Para firmar el JWT necesitas la clave privada, no la pública.
+    // Si Preset te pide la pública, es para verificar, no para firmar.
+    // Si solo tienes la pública, no puedes generar el token embebido.
+    // Si tienes la privada, usa PRIVATE_KEY como antes.
 
-    res.json({ token });
+    // Si realmente necesitas firmar con la pública (no recomendado), esto no funcionará.
+    // jwt.sign requiere la clave privada.
+
+    throw new Error("No se puede generar el token embebido usando solo la clave pública. Se requiere la clave privada.");
+
+    // Si tienes la clave privada, usa:
+    // const token = jwt.sign(payload, PRIVATE_KEY, {
+    //   algorithm: "RS256",
+    //   keyid: process.env.PRESET_KEY_ID
+    // });
+    // res.json({ token });
+
   } catch (err) {
     console.error(err);
     res.status(400).json({
@@ -1775,8 +1785,56 @@ app.get("/api/v1/preset/embedded-token/", async (req, res) => {
 });
 
 // ===============================
-// INICIAR SERVIDOR
+// ROUTER PARA TOKEN EMBEBIDO PRESET CLOUD
 // ===============================
+const embeddedRouter = express.Router();
+
+const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const EMBED_ID = process.env.PRESET_EMBED_ID;
+const KEY_ID = process.env.PRESET_KEY_ID;
+
+embeddedRouter.get("/api/v1/preset/embedded-token", async (req, res) => {
+  try {
+    if (!PRIVATE_KEY || PRIVATE_KEY.trim().length === 0) {
+      throw new Error("PRESET_PRIVATE_KEY no está definida.");
+    }
+    if (!EMBED_ID) {
+      throw new Error("PRESET_EMBED_ID no está definida.");
+    }
+    if (!KEY_ID) {
+      throw new Error("PRESET_KEY_ID no está definida.");
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    const payload = {
+      iss: "preset",
+      sub: "embed-user",
+      iat: now,
+      exp: now + 60 * 5,
+      rls: [
+        {
+          rid: EMBED_ID,
+          rtp: "dashboard",
+        },
+      ],
+    };
+
+    const token = jwt.sign(payload, PRIVATE_KEY, {
+      algorithm: "RS256",
+      keyid: KEY_ID,
+    });
+
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.use(embeddedRouter);
+
+// --- INICIAR SERVIDOR ---
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
