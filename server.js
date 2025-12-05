@@ -10,6 +10,7 @@ import path from "path";
 import multer from "multer";
 import Stripe from "stripe"; // Importación movida arriba para orden
 import os from "os";
+import jwt from "jsonwebtoken";
 
 dotenv.config(); // Siempre al inicio;
 const app = express();
@@ -1730,147 +1731,48 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
+// ===============================
+// GENERAR TOKEN EMBEBIDO PARA PRESET CLOUD (RSA PEM)
+// ===============================
+// Lee la clave privada desde variable de entorno PRESET_PRIVATE_KEY
+const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY;
 
-let cachedAdminAccessToken = null;
-
-// Función para obtener el token de administrador
-async function getAdminToken() {
+app.get("/api/v1/preset/embedded-token/", async (req, res) => {
   try {
-    // 1. Si ya existe, úsalo
-    if (cachedAdminAccessToken) {
-      return cachedAdminAccessToken;
-    }
+    const dashboardId = process.env.PRESET_EMBED_ID;
+    const now = Math.floor(Date.now() / 1000);
 
-    // 2. Si no existe, hacer login
-    const loginResponse = await axios.post(
-      `${process.env.SUPERSET_URL}/api/v1/security/login`,
-      {
-        username: process.env.SUPERSET_ADMIN_USER,
-        password: process.env.SUPERSET_ADMIN_PASSWORD,
-        provider: "db",
-      }
-    );
-
-    const token = loginResponse.data.access_token;
-
-    // Guardarlo en memoria
-    cachedAdminAccessToken = token;
-
-    console.log("🔐 Nuevo admin token generado.");
-
-    return token;
-
-  } catch (err) {
-    console.error("❌ Error generando admin token:", err.response?.data || err);
-    throw err;
-  }
-}
-
-function parseRoles(rolesString) {
-  if (!rolesString) return [];
-  return rolesString
-    .split(",")
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0);
-}
-
-
-
-// ============================
-// ENDPOINT: /superset-token
-// ============================
-app.get("/superset-token", async (req, res) => {
-  try {
-    // Obtener token admin (desde caché o login)
-    let adminAccessToken = await getAdminToken();
-
-    // 1. Obtener CSRF token usando el token de admin
-    const csrfResponse = await axios.get(
-      `${process.env.SUPERSET_URL}/api/v1/security/csrf_token`,
-      {
-        headers: {
-          Authorization: `Bearer ${adminAccessToken}`,
-        },
-      }
-    );
-    const csrfToken = csrfResponse.data.result;
-
-    // Armar payload del guest
-    const guestTokenPayload = {
-      user: {
-        username: "guest_user",
-        first_name: "Guest",
-        last_name: "User",
-      },
-      resources: [
+    const payload = {
+      iss: "preset",
+      sub: "embed-user",
+      iat: now,
+      exp: now + 60 * 5,
+      rls: [
         {
-          type: "dashboard",
-          id: process.env.SUPERSET_RESOURCE_ID,
-        },
-      ],
-      current_roles: parseRoles(process.env.SUPERSET_GUEST_ROLES),
-      rls: [],
+          rid: dashboardId,
+          rtp: "dashboard",
+        }
+      ]
     };
 
-    // Intentar generar guest token
-    let guestTokenResponse;
+    const token = jwt.sign(payload, PRIVATE_KEY, {
+      algorithm: "RS256",
+      keyid: process.env.PRESET_KEY_ID
+    });
 
-    try {
-      guestTokenResponse = await axios.post(
-        `${process.env.SUPERSET_URL}/api/v1/security/guest_token`,
-        guestTokenPayload,
-        {
-          headers: {
-            Authorization: `Bearer ${adminAccessToken}`,
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfToken, // <-- CSRF token agregado
-          },
-        }
-      );
-    } catch (error) {
-      // SI EL TOKEN DE ADMIN EXPIRÓ (401) → RENOVARLO Y REINTENTAR UNA VEZ
-      if (error.response?.status === 401) {
-        cachedAdminAccessToken = null; // limpiar
-        adminAccessToken = await getAdminToken(); // regenerar
-
-        // Obtener nuevo CSRF token
-        const csrfResponse2 = await axios.get(
-          `${process.env.SUPERSET_URL}/api/v1/security/csrf_token`,
-          {
-            headers: {
-              Authorization: `Bearer ${adminAccessToken}`,
-            },
-          }
-        );
-        const csrfToken2 = csrfResponse2.data.result;
-
-        // Reintentar petición
-        guestTokenResponse = await axios.post(
-          `${process.env.SUPERSET_URL}/api/v1/security/guest_token`,
-          guestTokenPayload,
-          {
-            headers: {
-              Authorization: `Bearer ${adminAccessToken}`,
-              "Content-Type": "application/json",
-              "X-CSRFToken": csrfToken2,
-            },
-          }
-        );
-      } else {
-        throw error;
-      }
-    }
-
-    res.json({ token: guestTokenResponse.data.token });
-
-  } catch (error) {
-    res.status(500).json({
-      message: "Error generating guest token",
-      details: error.response?.data || error.message,
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({
+      message: "Error generating embedded token",
+      details: err.toString()
     });
   }
 });
 
+// ===============================
+// INICIAR SERVIDOR
+// ===============================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
