@@ -1733,13 +1733,10 @@ app.post("/auth/google/token", async (req, res) => {
 });
 
 // ===============================
-// API EMBEDDED TOKEN PRESET (adaptado a tu formato)
+// API EMBEDDED TOKEN PRESET (adaptado y verificado)
 // ===============================
 const PRESET_DOMAIN = process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io";
 const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "eb982890-e494-42f1-8811-98580ce2be0b";
-const WORKSPACE_ID = process.env.PRESET_WORKSPACE_ID || "025175db";
-
-// Usa la clave privada desde variable de entorno
 const PRIVATE_KEY = (() => {
   let key = process.env.PRESET_PRIVATE_KEY;
   if (!key) return "";
@@ -1763,6 +1760,9 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
       throw new Error("PRESET_EMBED_ID (dashboard id) no está definida.");
     }
 
+    // Duración del token: 5 minutos (300 segundos)
+    const expiresInSeconds = 300;
+
     // Payload para el JWT embed
     const payload = {
       resources: [
@@ -1779,14 +1779,16 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
 
     const token = jwt.sign(payload, PRIVATE_KEY, {
       algorithm: "RS256",
-      expiresIn: "5m",
+      expiresIn: expiresInSeconds,
     });
 
+    // URL de embed para el dashboard
     const embedUrl = `${PRESET_DOMAIN}/superset/dashboard/${DASHBOARD_ID}/?standalone=1`;
 
     res.json({
       token,
       url: embedUrl,
+      expires_in: expiresInSeconds // Para que el frontend sepa cuándo renovar
     });
   } catch (err) {
     console.error(err);
