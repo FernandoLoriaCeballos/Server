@@ -1735,9 +1735,8 @@ app.post("/auth/google/token", async (req, res) => {
 // ===============================
 // API EMBEDDED TOKEN PRESET (JWT firmado con clave privada)
 // ===============================
-PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
-PRESET_KEY_ID = process.env.PRESET_KEY_ID;
-
+const PRIVATE_KEY = process.env.PRESET_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const PRESET_KEY_ID = process.env.PRESET_KEY_ID;
 const PRESET_EMBED_ID = process.env.PRESET_EMBED_ID;
 
 app.get("/api/v1/preset/embedded-token", async (req, res) => {
