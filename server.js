@@ -1760,7 +1760,7 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
       ],
       rls: [],
       user: {
-        username: "google-oauth2|112074963408205641222",
+        username: "guest_user",
       },
     };
 
