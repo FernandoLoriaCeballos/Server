@@ -1736,7 +1736,7 @@ app.post("/auth/google/token", async (req, res) => {
 // API EMBEDDED TOKEN PRESET (adaptado y verificado)
 // ===============================
 const PRESET_DOMAIN = process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io";
-const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "eb982890-e494-42f1-8811-98580ce2be0b";
+const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "906c50ed-9eea-4d92-b728-378bb7585bef";
 const PRIVATE_KEY = (() => {
   let key = process.env.PRESET_PRIVATE_KEY;
   if (!key) return "";
