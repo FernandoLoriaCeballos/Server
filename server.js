@@ -1764,6 +1764,13 @@ async function getPresetGuestToken({
   first_name,
   last_name
 }) {
+  // --- DEBUG LOGS PARA AYUDARTE ---
+  console.log("Preset Guest Token Params:");
+  console.log("team_name:", team_name);
+  console.log("workspace_name:", workspace_name);
+  console.log("dashboard_id:", dashboard_id);
+  console.log("username:", username);
+
   const embedded_payload = {
     user: {
       username,
@@ -1777,8 +1784,10 @@ async function getPresetGuestToken({
     rls: []
   };
   try {
+    const url = `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`;
+    console.log("Preset API URL:", url);
     const embedded_response = await axios.post(
-      `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
+      url,
       embedded_payload,
       {
         headers: {
@@ -1789,10 +1798,15 @@ async function getPresetGuestToken({
     );
     return embedded_response.data?.data?.payload?.token;
   } catch (err) {
-    // Si el error es "Not Found", probablemente el team_name o workspace_name están mal
+    // Log completo de error para depuración
+    console.error("Preset API error:", err?.response?.data || err.message);
     if (err?.response?.data?.error?.errors?.[0]?.code === 1003 ||
         (err?.response?.data?.error?.errors?.[0]?.message && err.response.data.error.errors[0].message.toLowerCase().includes("not found"))) {
-      throw new Error("Preset API: Team name, workspace name, o dashboard id incorrectos. Verifica que los valores enviados existen en tu cuenta de Preset.");
+      throw new Error(
+        "Preset API: Team name, workspace name, o dashboard id incorrectos. " +
+        "Verifica que los valores enviados existen en tu cuenta de Preset. " +
+        "Revisa mayúsculas/minúsculas, espacios, guiones y que el dashboard esté publicado y el workspace sea correcto."
+      );
     }
     throw err;
   }
