@@ -1796,9 +1796,9 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       team_name = process.env.PRESET_TEAM_NAME,
       workspace_name = process.env.PRESET_WORKSPACE_NAME,
       dashboard_id = process.env.PRESET_EMBED_ID,
-      username = "guest_user",
-      first_name = "Guest",
-      last_name = "User"
+      username = "5463ca90-3205-45be-a01a-d64d6f6ab767",
+      first_name = "sharis",
+      last_name = "gomez"
     } = req.body;
 
     // 1. Autenticación con Preset Manager API
