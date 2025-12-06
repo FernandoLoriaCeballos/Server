@@ -1764,10 +1764,13 @@ async function getPresetGuestToken({
   first_name,
   last_name
 }) {
-  // --- DEBUG LOGS PARA AYUDARTE ---
-  console.log("Preset Guest Token Params:");
-  console.log("team_name:", team_name);
-  console.log("workspace_name:", workspace_name);
+  // Forzar los valores que quieres usar
+  const fixed_team_name = "165a4f44";
+  const fixed_workspace_name = "025175db";
+
+  console.log("Preset Guest Token Params (FORZADOS):");
+  console.log("team_name:", fixed_team_name);
+  console.log("workspace_name:", fixed_workspace_name);
   console.log("dashboard_id:", dashboard_id);
   console.log("username:", username);
 
@@ -1784,7 +1787,7 @@ async function getPresetGuestToken({
     rls: []
   };
   try {
-    const url = `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`;
+    const url = `https://api.app.preset.io/v1/teams/${fixed_team_name}/workspaces/${fixed_workspace_name}/guest-token/`;
     console.log("Preset API URL:", url);
     const embedded_response = await axios.post(
       url,
@@ -1798,7 +1801,6 @@ async function getPresetGuestToken({
     );
     return embedded_response.data?.data?.payload?.token;
   } catch (err) {
-    // Log completo de error para depuración
     console.error("Preset API error:", err?.response?.data);
     if (err?.response?.data?.error?.errors?.[0]?.code === 1003 ||
         (err?.response?.data?.error?.errors?.[0]?.message && err.response.data.error.errors[0].message.toLowerCase().includes("not found"))) {
@@ -1823,7 +1825,7 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       team_name = process.env.PRESET_TEAM_NAME,
       workspace_name = process.env.PRESET_WORKSPACE_NAME,
       dashboard_id = process.env.PRESET_EMBED_ID,
-      username = "sharivett179@gmail.com",
+      username = "auth0|693267f239cf93e2f1d92bc2",
       first_name = "sharis",
       last_name = "gomez"
     } = req.body;
