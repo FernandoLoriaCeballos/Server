@@ -1799,7 +1799,7 @@ async function getPresetGuestToken({
     return embedded_response.data?.data?.payload?.token;
   } catch (err) {
     // Log completo de error para depuración
-    console.error("Preset API error:", err?.response?.data || err.message);
+    console.error("Preset API error:", err?.response?.data);
     if (err?.response?.data?.error?.errors?.[0]?.code === 1003 ||
         (err?.response?.data?.error?.errors?.[0]?.message && err.response.data.error.errors[0].message.toLowerCase().includes("not found"))) {
       throw new Error(
@@ -1849,8 +1849,14 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       });
     } catch (err) {
       // Log detallado del error
-      console.error("Error interno al solicitar guest token:", err.message);
-      return res.status(400).json({ error: err.message });
+      console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
+      return res.status(400).json({
+        error:
+          err?.response?.data?.error?.errors?.[0]?.message ||
+          err?.response?.data?.error?.message ||
+          err.message ||
+          "Error desconocido en backend."
+      });
     }
 
     if (!guest_token) {
@@ -1875,10 +1881,21 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
         (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
       console.error("No autorizado para generar el guest token.");
-      return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
+      return res.status(401).json({
+        error:
+          err?.response?.data?.error?.message ||
+          err.message ||
+          "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset."
+      });
     }
-    console.error("Error al generar guest token:", err?.response?.data || err.message);
-    res.status(400).json({ error: err?.response?.data || err.message });
+    console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
+    res.status(400).json({
+      error:
+        err?.response?.data?.error?.errors?.[0]?.message ||
+        err?.response?.data?.error?.message ||
+        err.message ||
+        "Error desconocido en backend."
+    });
   }
 });
 
