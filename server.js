@@ -1764,16 +1764,14 @@ async function getPresetGuestToken({
   first_name,
   last_name
 }) {
-  // Forzar los valores que quieres usar
-  const fixed_team_name = "165a4f44";
-  const fixed_workspace_name = "025175db";
-
-  console.log("Preset Guest Token Params (FORZADOS):");
-  console.log("team_name:", fixed_team_name);
-  console.log("workspace_name:", fixed_workspace_name);
+  // --- DEBUG LOGS PARA AYUDARTE ---
+  console.log("Preset Guest Token Params:");
+  console.log("team_name:", team_name);
+  console.log("workspace_name:", workspace_name);
   console.log("dashboard_id:", dashboard_id);
   console.log("username:", username);
 
+  // Usa los valores que enviaste en el ejemplo
   const embedded_payload = {
     user: {
       username,
@@ -1787,7 +1785,8 @@ async function getPresetGuestToken({
     rls: []
   };
   try {
-    const url = `https://api.app.preset.io/v1/teams/${fixed_team_name}/workspaces/${fixed_workspace_name}/guest-token/`;
+    // Usa los slugs/literal que enviaste en el ejemplo
+    const url = `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`;
     console.log("Preset API URL:", url);
     const embedded_response = await axios.post(
       url,
@@ -1819,12 +1818,13 @@ async function getPresetGuestToken({
 // ===============================
 app.post("/api/v1/preset/guest-token", async (req, res) => {
   try {
+    // Usa los valores que corresponden a tu ejemplo
     const {
       api_name = process.env.PRESET_API_NAME,
       api_secret = process.env.PRESET_API_SECRET,
-      team_name = process.env.PRESET_TEAM_NAME,
-      workspace_name = process.env.PRESET_WORKSPACE_NAME,
-      dashboard_id = process.env.PRESET_EMBED_ID,
+      team_name = "165a4f44", // slug del equipo
+      workspace_name = "025175db", // slug del workspace
+      dashboard_id = "9eaf168a-2729-403e-81aa-eb6f7c488c9e", // id del dashboard
       username = "auth0|693267f239cf93e2f1d92bc2",
       first_name = "sharis",
       last_name = "gomez"
@@ -1854,9 +1854,7 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
         last_name
       });
     } catch (err) {
-      // Log detallado del error
       console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
-      // --- LOGS DE LA URL FINAL ---
       if (err.config) {
         console.error("Preset API URL usada:", err.config.url);
         console.error("Payload enviado:", err.config.data);
@@ -1885,7 +1883,6 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       expires_in: 300 // Preset guest tokens suelen durar 5 minutos
     });
   } catch (err) {
-    // Manejo específico para error "Not Found" (code 1003)
     if (err.message && err.message.includes("Preset API: Team name, workspace name, o dashboard id incorrectos")) {
       console.error("Preset API error:", err.message);
       return res.status(404).json({ error: err.message });
