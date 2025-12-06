@@ -1828,6 +1828,10 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       last_name = "gomez"
     } = req.body;
 
+    // --- LOGS PARA DEBUG ---
+    console.log("Preset API guest-token request:");
+    console.log({ api_name, team_name, workspace_name, dashboard_id, username });
+
     // 1. Autenticación con Preset Manager API
     const preset_jwt_token = await getPresetAccessToken(api_name, api_secret);
     if (!preset_jwt_token) {
@@ -1850,6 +1854,12 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     } catch (err) {
       // Log detallado del error
       console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
+      // --- LOGS DE LA URL FINAL ---
+      if (err.config) {
+        console.error("Preset API URL usada:", err.config.url);
+        console.error("Payload enviado:", err.config.data);
+        console.error("Headers:", err.config.headers);
+      }
       return res.status(400).json({
         error:
           err?.response?.data?.error?.errors?.[0]?.message ||
