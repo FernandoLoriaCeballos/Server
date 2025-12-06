@@ -1776,17 +1776,26 @@ async function getPresetGuestToken({
     }],
     rls: []
   };
-  const embedded_response = await axios.post(
-    `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
-    embedded_payload,
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${preset_jwt_token}`
+  try {
+    const embedded_response = await axios.post(
+      `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
+      embedded_payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${preset_jwt_token}`
+        }
       }
+    );
+    return embedded_response.data?.data?.payload?.token;
+  } catch (err) {
+    // Si el error es "Not Found", probablemente el team_name o workspace_name están mal
+    if (err?.response?.data?.error?.errors?.[0]?.code === 1003 ||
+        (err?.response?.data?.error?.errors?.[0]?.message && err.response.data.error.errors[0].message.toLowerCase().includes("not found"))) {
+      throw new Error("Preset API: Team name, workspace name, o dashboard id incorrectos. Verifica que los valores enviados existen en tu cuenta de Preset.");
     }
-  );
-  return embedded_response.data?.data?.payload?.token;
+    throw err;
+  }
 }
 
 // ===============================
@@ -1835,6 +1844,11 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       expires_in: 300 // Preset guest tokens suelen durar 5 minutos
     });
   } catch (err) {
+    // Manejo específico para error "Not Found" (code 1003)
+    if (err.message && err.message.includes("Preset API: Team name, workspace name, o dashboard id incorrectos")) {
+      return res.status(404).json({ error: err.message });
+    }
+    // ...existing error handling...
     if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
         (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
       return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
