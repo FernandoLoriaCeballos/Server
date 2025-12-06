@@ -1764,75 +1764,65 @@ async function getPresetGuestToken({
   first_name,
   last_name
 }) {
-  // El backend genera el payload final, no el frontend
   const embedded_payload = {
     user: {
       username,
       first_name,
       last_name
     },
-    resources: [{
-      type: "dashboard",
-      id: dashboard_id
-    }],
+    resources: [{ type: "dashboard", id: dashboard_id }],
     rls: []
   };
+
+  const url = `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`;
+
   try {
-    const url = `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`;
-    const embedded_response = await axios.post(
-      url,
-      embedded_payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${preset_jwt_token}`
-        }
+    const embedded_response = await axios.post(url, embedded_payload, {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${preset_jwt_token}`
       }
-    );
-    return embedded_response.data?.data?.payload?.token;
+    });
+
+    // CAMBIO IMPORTANTE
+    return embedded_response.data?.payload?.token;
+
   } catch (err) {
-    console.error("Preset API error:", err?.response?.data);
-    if (err?.response?.data?.error?.errors?.[0]?.code === 1003 ||
-        (err?.response?.data?.error?.errors?.[0]?.message && err.response.data.error.errors[0].message.toLowerCase().includes("not found"))) {
-      throw new Error(
-        "Preset API: Team name, workspace name, o dashboard id incorrectos. " +
-        "Verifica que los valores enviados existen en tu cuenta de Preset. " +
-        "Revisa mayúsculas/minúsculas, espacios, guiones y que el dashboard esté publicado y el workspace sea correcto."
-      );
-    }
+    console.error("Preset API error:", err.response?.data);
     throw err;
   }
 }
+
 
 // ===============================
 // POST para generar usuario guest y obtener guest token desde Preset Manager API
 // ===============================
 app.post("/api/v1/preset/guest-token", async (req, res) => {
   try {
-    // SOLO recibe los datos de autenticación y parámetros, NO el payload final
+    // Usa los valores que corresponden a tu ejemplo
     const {
-      api_name,
-      api_secret,
-      team_name,
-      workspace_name,
-      dashboard_id,
-      username,
-      first_name,
-      last_name
+      api_name = process.env.PRESET_API_NAME,
+      api_secret = process.env.PRESET_API_SECRET,
+      team_name = "165a4f44", // slug del equipo
+      workspace_name = "025175db", // slug del workspace
+      dashboard_id = "9eaf168a-2729-403e-81aa-eb6f7c488c9e", // id del dashboard
+      username = "auth0|693267f239cf93e2f1d92bc2",
+      first_name = "sharis",
+      last_name = "gomez"
     } = req.body;
 
-    // Validación básica
-    if (!api_name || !api_secret || !team_name || !workspace_name || !dashboard_id || !username || !first_name || !last_name) {
-      return res.status(400).json({ error: "Faltan parámetros obligatorios para generar el guest token." });
-    }
+    // --- LOGS PARA DEBUG ---
+    console.log("Preset API guest-token request:");
+    console.log({ api_name, team_name, workspace_name, dashboard_id, username });
 
-    // 1. Obtener access_token desde Preset Manager API
+    // 1. Autenticación con Preset Manager API
     const preset_jwt_token = await getPresetAccessToken(api_name, api_secret);
     if (!preset_jwt_token) {
+      console.error("No se pudo obtener el token de autenticación de Preset.");
       return res.status(401).json({ error: "No se pudo obtener el token de autenticación de Preset." });
     }
 
-    // 2. El backend genera el payload y lo manda a Preset
+    // 2. Solicitar el guest token
     let guest_token;
     try {
       guest_token = await getPresetGuestToken({
@@ -1846,6 +1836,11 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       });
     } catch (err) {
       console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
+      if (err.config) {
+        console.error("Preset API URL usada:", err.config.url);
+        console.error("Payload enviado:", err.config.data);
+        console.error("Headers:", err.config.headers);
+      }
       return res.status(400).json({
         error:
           err?.response?.data?.error?.errors?.[0]?.message ||
@@ -1856,6 +1851,7 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     }
 
     if (!guest_token) {
+      console.error("No se pudo obtener el guest token de Preset.");
       return res.status(400).json({ error: "No se pudo obtener el guest token de Preset." });
     }
 
@@ -1865,14 +1861,16 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     res.json({
       token: guest_token,
       url: embedUrl,
-      expires_in: 300
+      expires_in: 300 // Preset guest tokens suelen durar 5 minutos
     });
   } catch (err) {
     if (err.message && err.message.includes("Preset API: Team name, workspace name, o dashboard id incorrectos")) {
+      console.error("Preset API error:", err.message);
       return res.status(404).json({ error: err.message });
     }
     if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
         (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
+      console.error("No autorizado para generar el guest token.");
       return res.status(401).json({
         error:
           err?.response?.data?.error?.message ||
@@ -1880,6 +1878,7 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
           "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset."
       });
     }
+    console.error("ERROR COMPLETO DE PRESET:", err?.response?.data);
     res.status(400).json({
       error:
         err?.response?.data?.error?.errors?.[0]?.message ||
@@ -1889,6 +1888,7 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     });
   }
 });
+
 
 // --- INICIAR SERVIDOR ---
 const PORT = process.env.PORT || 3000;
