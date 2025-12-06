@@ -1831,21 +1831,30 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     // 1. Autenticación con Preset Manager API
     const preset_jwt_token = await getPresetAccessToken(api_name, api_secret);
     if (!preset_jwt_token) {
+      console.error("No se pudo obtener el token de autenticación de Preset.");
       return res.status(401).json({ error: "No se pudo obtener el token de autenticación de Preset." });
     }
 
     // 2. Solicitar el guest token
-    const guest_token = await getPresetGuestToken({
-      preset_jwt_token,
-      team_name,
-      workspace_name,
-      dashboard_id,
-      username,
-      first_name,
-      last_name
-    });
+    let guest_token;
+    try {
+      guest_token = await getPresetGuestToken({
+        preset_jwt_token,
+        team_name,
+        workspace_name,
+        dashboard_id,
+        username,
+        first_name,
+        last_name
+      });
+    } catch (err) {
+      // Log detallado del error
+      console.error("Error interno al solicitar guest token:", err.message);
+      return res.status(400).json({ error: err.message });
+    }
 
     if (!guest_token) {
+      console.error("No se pudo obtener el guest token de Preset.");
       return res.status(400).json({ error: "No se pudo obtener el guest token de Preset." });
     }
 
@@ -1860,11 +1869,12 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
   } catch (err) {
     // Manejo específico para error "Not Found" (code 1003)
     if (err.message && err.message.includes("Preset API: Team name, workspace name, o dashboard id incorrectos")) {
+      console.error("Preset API error:", err.message);
       return res.status(404).json({ error: err.message });
     }
-    // ...existing error handling...
     if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
         (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
+      console.error("No autorizado para generar el guest token.");
       return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
     }
     console.error("Error al generar guest token:", err?.response?.data || err.message);
