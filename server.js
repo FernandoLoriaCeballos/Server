@@ -1734,57 +1734,6 @@ app.post("/auth/google/token", async (req, res) => {
   }
 });
 
-// ===============================
-// API EMBEDDED TOKEN PRESET (adaptado y verificado)
-// ===============================
-const PRESET_DOMAIN = process.env.PRESET_DOMAIN || "https://025175db.us2a.app.preset.io";
-const DASHBOARD_ID = process.env.PRESET_EMBED_ID || "9eaf168a-2729-403e-81aa-eb6f7c488c9e";
-const PRIVATE_KEY = (() => {
-  let key = process.env.PRESET_PRIVATE_KEY;
-  if (!key) return "";
-  if (key.includes("\\n")) key = key.replace(/\\n/g, "\n");
-  key = key.trim().replace(/^"+|"+$/g, "");
-  return key;
-})();
-
-app.get("/api/v1/preset/embedded-token", async (req, res) => {
-  try {
-    // Duración del token: 5 minutos (300 segundos)
-    const expiresInSeconds = 300;
-
-    // Payload para el JWT embed
-    const payload = {
-      resources: [
-        {
-          type: "dashboard",
-          id: DASHBOARD_ID,
-        },
-      ],
-      rls: [],
-      user: {
-        username: "guest_user",
-      },
-    };
-
-    const token = jwt.sign(payload, PRIVATE_KEY, {
-      algorithm: "RS256",
-      expiresIn: expiresInSeconds,
-    });
-
-    // URL de embed correcta (NO uses /manage)
-    const embedUrl = `${PRESET_DOMAIN}/superset/dashboard/${DASHBOARD_ID}/?standalone=1`;
-
-    res.json({
-      token,
-      url: embedUrl,
-      expires_in: expiresInSeconds
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: err.message });
-  }
-});
-
 /**
  * Preset Manager API authentication
  * Retrieves a jwt token using your API credentials
