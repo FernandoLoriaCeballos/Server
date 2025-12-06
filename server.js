@@ -1899,11 +1899,6 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
   }
 });
 
-console.log("USANDO team_name =", team_name);
-console.log("USANDO workspace_name =", workspace_name);
-console.log("USANDO dashboard_id =", dashboard_id);
-console.log("URL final:", url);
-
 
 // --- INICIAR SERVIDOR ---
 const PORT = process.env.PORT || 3000;
