@@ -1785,6 +1785,61 @@ app.get("/api/v1/preset/embedded-token", async (req, res) => {
   }
 });
 
+/**
+ * Preset Manager API authentication
+ * Retrieves a jwt token using your API credentials
+ */
+async function getPresetAccessToken(api_name, api_secret) {
+  const auth_payload = {
+    name: api_name,
+    secret: api_secret
+  };
+  const auth_response = await axios.post(
+    "https://api.app.preset.io/v1/auth/",
+    auth_payload,
+    { headers: { "Content-Type": "application/json" } }
+  );
+  return auth_response.data?.payload?.access_token;
+}
+
+/**
+ * Embedded Guest Token generation
+ * Generates a guest token to be used by the Embedded SDK
+ */
+async function getPresetGuestToken({
+  preset_jwt_token,
+  team_name,
+  workspace_name,
+  dashboard_id,
+  username,
+  first_name,
+  last_name
+}) {
+  const embedded_payload = {
+    user: {
+      username,
+      first_name,
+      last_name
+    },
+    resources: [{
+      type: "dashboard",
+      id: dashboard_id
+    }],
+    rls: []
+  };
+  const embedded_response = await axios.post(
+    `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
+    embedded_payload,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${preset_jwt_token}`
+      }
+    }
+  );
+  return embedded_response.data?.data?.payload?.token;
+}
+
 // ===============================
 // POST para generar usuario guest y obtener guest token desde Preset Manager API
 // ===============================
@@ -1802,55 +1857,22 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
     } = req.body;
 
     // 1. Autenticación con Preset Manager API
-    const auth_payload = {
-      name: api_name,
-      secret: api_secret
-    };
-
-    const auth_response = await axios.post(
-      "https://api.app.preset.io/v1/auth/",
-      auth_payload,
-      { headers: { "Content-Type": "application/json" } }
-    );
-
-    const preset_jwt_token = auth_response.data?.payload?.access_token;
+    const preset_jwt_token = await getPresetAccessToken(api_name, api_secret);
     if (!preset_jwt_token) {
       return res.status(401).json({ error: "No se pudo obtener el token de autenticación de Preset." });
     }
 
     // 2. Solicitar el guest token
-    const embedded_payload = {
-      user: {
-        username,
-        first_name,
-        last_name
-      },
-      resources: [{
-        type: "dashboard",
-        id: dashboard_id
-      }],
-      rls: []
-    };
+    const guest_token = await getPresetGuestToken({
+      preset_jwt_token,
+      team_name,
+      workspace_name,
+      dashboard_id,
+      username,
+      first_name,
+      last_name
+    });
 
-    const embedded_response = await axios.post(
-      `https://api.app.preset.io/v1/teams/${team_name}/workspaces/${workspace_name}/guest-token/`,
-      embedded_payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${preset_jwt_token}`
-        }
-      }
-    );
-
-    // --- VALIDACIÓN DE AUTORIZACIÓN ---
-    // Si la respuesta contiene error de autorización, responde 401
-    if (embedded_response.data?.error?.code === "NOT_AUTHORIZED" ||
-        embedded_response.data?.error?.message?.toLowerCase().includes("not authorized")) {
-      return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
-    }
-
-    const guest_token = embedded_response.data?.data?.payload?.token;
     if (!guest_token) {
       return res.status(400).json({ error: "No se pudo obtener el guest token de Preset." });
     }
@@ -1864,7 +1886,6 @@ app.post("/api/v1/preset/guest-token", async (req, res) => {
       expires_in: 300 // Preset guest tokens suelen durar 5 minutos
     });
   } catch (err) {
-    // Si el error es de autorización, responde 401
     if (err?.response?.data?.error?.code === "NOT_AUTHORIZED" ||
         (err?.response?.data?.error?.message && err.response.data.error.message.toLowerCase().includes("not authorized"))) {
       return res.status(401).json({ error: "No autorizado para generar el guest token. Verifica credenciales, permisos y configuración de embed en Preset." });
